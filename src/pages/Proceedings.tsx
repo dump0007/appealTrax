@@ -120,7 +120,31 @@ export default function Proceedings() {
 
   const upcomingHearings = useMemo(() => {
     const now = new Date()
-    return proceedings
+    const latestByFIR = new Map<string, Proceeding>()
+
+    proceedings.forEach((p) => {
+      const firId =
+        typeof p.fir === 'string'
+          ? p.fir
+          : p.fir?._id
+      if (!firId) return
+
+      const existing = latestByFIR.get(firId)
+      const currentSeq = existing?.sequence ?? -Infinity
+      const seq = p.sequence ?? -Infinity
+
+      if (!existing || seq > currentSeq) {
+        latestByFIR.set(firId, p)
+      } else if (seq === currentSeq) {
+        const currentTime = new Date(existing?.createdAt || 0).getTime()
+        const newTime = new Date(p.createdAt || 0).getTime()
+        if (newTime > currentTime) {
+          latestByFIR.set(firId, p)
+        }
+      }
+    })
+
+    return Array.from(latestByFIR.values())
       .filter((p) => {
         const hearingDate = p.hearingDetails?.dateOfHearing
         if (!hearingDate) return false

@@ -92,9 +92,9 @@ export default function FIRDetail() {
       const seqA = a.sequence ?? 0
       const seqB = b.sequence ?? 0
       if (seqA === seqB) {
-        return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime()
+        return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
       }
-      return seqA - seqB
+      return seqB - seqA
     })
   }, [localProceedings])
 
