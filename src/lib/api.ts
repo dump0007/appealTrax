@@ -45,18 +45,25 @@ function handleAuthError() {
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getAuthToken()
-  const headers: HeadersInit = {
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...(options.headers || {}),
+    ...((options.headers as Record<string, string>) || {}),
   }
   
-  if (token) {
-    // Backend uses x-access-token header
-    headers['x-access-token'] = token
-  }
-
   // Don't redirect on auth endpoints - they're meant to be accessed without auth
   const isAuthEndpoint = path.startsWith('/auth/')
+  
+  // For protected routes (all /v1/* routes), always add token if available
+  // If token is missing for protected routes, backend will reject and we'll handle it
+  if (!isAuthEndpoint && token) {
+    // Backend uses x-access-token header
+    headers['x-access-token'] = token
+  } else if (!isAuthEndpoint && !token) {
+    // If no token for protected route, redirect immediately
+    console.warn('[API] No token available for protected route:', path)
+    handleAuthError()
+    throw new Error('Authentication required. Please login again.')
+  }
 
   const method = options.method || 'GET'
   console.log(`[API] ${method} ${API_BASE_URL}${path}`, { 

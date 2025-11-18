@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { createProceeding, fetchFIRDetail, fetchProceedingsByFIR } from '../lib/api'
 import { useAuthStore } from '../store'
-import type { FIR, Proceeding, ProceedingType, CourtAttendanceMode, WritStatus } from '../types'
+import type { FIR, Proceeding, ProceedingType, CourtAttendanceMode, WritStatus, CreateProceedingInput } from '../types'
 
 export default function FIRDetail() {
   const { firId } = useParams<{ firId: string }>()
@@ -117,18 +117,7 @@ export default function FIRDetail() {
 
     try {
       setError(null)
-      const payload: {
-        fir: string
-        type: ProceedingType
-        summary?: string
-        details?: string
-        hearingDetails: typeof formData.hearingDetails
-        createdBy?: string
-        noticeOfMotion?: typeof formData.noticeOfMotion
-        replyTracking?: typeof formData.replyTracking
-        argumentDetails?: typeof formData.argumentDetails
-        decisionDetails?: typeof formData.decisionDetails
-      } = {
+      const payload: CreateProceedingInput = {
         fir: firId,
         type: formData.type,
         summary: formData.summary || undefined,
@@ -146,6 +135,9 @@ export default function FIRDetail() {
       } else if (formData.type === 'DECISION') {
         payload.decisionDetails = formData.decisionDetails
       }
+
+      // Remove createdBy from payload - backend will set it from auth context
+      delete payload.createdBy
 
       const newProceeding = await createProceeding(payload)
       setLocalProceedings((prev) => [newProceeding, ...prev])

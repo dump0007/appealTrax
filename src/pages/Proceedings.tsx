@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { createProceeding, fetchAllProceedings, fetchFIRs, searchFIRs } from '../lib/api'
 import { useAuthStore } from '../store'
-import type { FIR, Proceeding, ProceedingType, CourtAttendanceMode, WritStatus } from '../types'
+import type { FIR, Proceeding, ProceedingType, CourtAttendanceMode, WritStatus, CreateProceedingInput } from '../types'
 
 export default function Proceedings() {
   const navigate = useNavigate()
@@ -204,18 +204,7 @@ export default function Proceedings() {
 
     try {
       setError(null)
-      const payload: {
-        fir: string
-        type: ProceedingType
-        summary?: string
-        details?: string
-        hearingDetails: typeof formData.hearingDetails
-        createdBy?: string
-        noticeOfMotion?: typeof formData.noticeOfMotion
-        replyTracking?: typeof formData.replyTracking
-        argumentDetails?: typeof formData.argumentDetails
-        decisionDetails?: typeof formData.decisionDetails
-      } = {
+      const payload: CreateProceedingInput = {
         fir: formData.fir,
         type: formData.type,
         summary: formData.summary || undefined,

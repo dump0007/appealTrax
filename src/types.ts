@@ -163,7 +163,7 @@ export interface CreateProceedingInput {
   replyTracking?: ReplyTrackingDetails
   argumentDetails?: ArgumentDetails
   decisionDetails?: DecisionDetails
-  createdBy: string // Officer ID (will need to get from auth context)
+  createdBy?: string // Officer ID (optional - backend sets it from JWT token)
   attachments?: Array<{ fileName: string; fileUrl: string }>
 }
 
