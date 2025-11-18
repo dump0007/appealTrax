@@ -1102,7 +1102,8 @@ function formatDate(value?: string) {
   if (Number.isNaN(date.getTime())) {
     return '—'
   }
-  return date.toLocaleDateString(undefined, {
+  return date.toLocaleDateString('en-GB', {
+    timeZone: 'UTC',
     year: 'numeric',
     month: 'short',
     day: 'numeric',

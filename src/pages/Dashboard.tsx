@@ -306,11 +306,16 @@ function formatStatusLabel(status: string) {
     .join(' ')
 }
 
-function formatDate(value: string) {
+function formatDate(value?: string) {
   if (!value) return '—'
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) {
     return '—'
   }
-  return date.toLocaleDateString()
+  return date.toLocaleDateString('en-GB', {
+    timeZone: 'UTC',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  })
 }
