@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { createProceeding, fetchAllProceedings, fetchFIRs, searchFIRs } from '../lib/api'
-import { useAuthStore } from '../store'
+import { createProceeding, fetchAllProceedings, fetchDraftProceedingByFIR, fetchFIRs, searchFIRs } from '../lib/api'
+import { useAuthStore, useApiCacheStore } from '../store'
 import type { FIR, Proceeding, ProceedingType, CourtAttendanceMode, WritStatus, CreateProceedingInput } from '../types'
 
 export default function Proceedings() {
@@ -19,6 +19,7 @@ export default function Proceedings() {
   const [searchTerm, setSearchTerm] = useState('')
   const [filterType, setFilterType] = useState<ProceedingType | 'ALL'>('ALL')
   const [filterFIR, setFilterFIR] = useState<string>('ALL')
+  const [firsWithDrafts, setFirsWithDrafts] = useState<Set<string>>(new Set())
 
   const [formData, setFormData] = useState({
     fir: '',
@@ -65,6 +66,22 @@ export default function Proceedings() {
   useEffect(() => {
     async function load() {
       try {
+        const cache = useApiCacheStore.getState()
+        
+        // Check cache first for instant loading
+        const cachedProceedings = cache.getCachedProceedings()
+        const cachedFirs = cache.getCachedFirs()
+
+        if (cachedProceedings) {
+          setProceedings(cachedProceedings)
+          setLoading(false) // Show cached data immediately
+        }
+        if (cachedFirs) {
+          setFirs(cachedFirs)
+          setFirSearchResults(cachedFirs) // Initialize search results with cached FIRs
+        }
+
+        // Fetch fresh data in the background
         setLoading(true)
         console.log('Loading FIRs and proceedings...')
         const [proceedingsData, firsData] = await Promise.all([
@@ -74,8 +91,28 @@ export default function Proceedings() {
         console.log('FIRs loaded:', firsData?.length || 0, firsData)
         console.log('Proceedings loaded:', proceedingsData?.length || 0)
         setProceedings(proceedingsData || [])
-        setFirs(firsData || [])
-        setFirSearchResults(firsData || []) // Initialize search results with all FIRs
+        
+        // Check for drafts and filter out FIRs with drafts
+        const draftSet = new Set<string>()
+        const firsWithoutDrafts: FIR[] = []
+        await Promise.all(
+          (firsData || []).map(async (fir) => {
+            try {
+              const draft = await fetchDraftProceedingByFIR(fir._id)
+              if (draft) {
+                draftSet.add(fir._id)
+              } else {
+                firsWithoutDrafts.push(fir)
+              }
+            } catch {
+              // If error checking draft, include the FIR (assume no draft)
+              firsWithoutDrafts.push(fir)
+            }
+          })
+        )
+        setFirsWithDrafts(draftSet)
+        setFirs(firsWithoutDrafts) // Only show FIRs without drafts
+        setFirSearchResults(firsWithoutDrafts) // Initialize search results with FIRs without drafts
         setError(null)
       } catch (err) {
         console.error('Error loading data:', err)
@@ -105,7 +142,9 @@ export default function Proceedings() {
         console.log('Searching FIRs with query:', firSearchQuery)
         const results = await searchFIRs(firSearchQuery)
         console.log('Search results:', results?.length || 0, results)
-        setFirSearchResults(results || [])
+        // Filter out FIRs with drafts from search results
+        const resultsWithoutDrafts = (results || []).filter(fir => !firsWithDrafts.has(fir._id))
+        setFirSearchResults(resultsWithoutDrafts)
       } catch (err) {
         console.error('Failed to search FIRs:', err)
         setFirSearchResults([])
@@ -116,7 +155,7 @@ export default function Proceedings() {
     }, 300) // Debounce search by 300ms
 
     return () => clearTimeout(searchDelay)
-  }, [firSearchQuery, firs])
+  }, [firSearchQuery, firs, firsWithDrafts])
 
   const upcomingHearings = useMemo(() => {
     const now = new Date()
@@ -320,7 +359,7 @@ export default function Proceedings() {
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Proceedings Management</h1>
           <p className="mt-1 text-sm text-gray-500">
-            Track hearings, motions, and decisions across all FIR cases
+            Track hearings, motions, and decisions across all writ cases
           </p>
         </div>
         <button
@@ -338,8 +377,10 @@ export default function Proceedings() {
         </div>
       )}
 
-      {/* Statistics Cards */}
-      <div className="grid gap-4 md:grid-cols-4">
+      {!showCreateForm && (
+        <>
+          {/* Statistics Cards */}
+          <div className="grid gap-4 md:grid-cols-4">
         <StatCard
           label="Total Proceedings"
           value={stats.total}
@@ -410,7 +451,7 @@ export default function Proceedings() {
                             className="hover:text-indigo-600 hover:underline"
                             onClick={(e) => e.stopPropagation()}
                           >
-                            FIR #{fir.firNumber} - {fir.petitionerName}
+                            WRIT #{fir.firNumber} - {fir.petitionerName}
                           </Link>
                         ) : (
                           proceeding.summary || 'No summary'
@@ -446,7 +487,7 @@ export default function Proceedings() {
                         onClick={() => navigate(`/firs/${fir._id}`)}
                         className="rounded-md border border-indigo-600 px-3 py-1.5 text-xs font-medium text-indigo-600 hover:bg-indigo-50"
                       >
-                        View FIR
+                        View Writ
                       </button>
                     )}
                   </div>
@@ -455,6 +496,8 @@ export default function Proceedings() {
             })}
           </div>
         </section>
+      )}
+        </>
       )}
 
       {/* Create Proceeding Form */}
@@ -472,18 +515,18 @@ export default function Proceedings() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Section 0: FIR Selection */}
+            {/* Section 0: Writ Selection */}
             <div className="rounded-lg border-2 border-indigo-200 bg-indigo-50/30 p-6 shadow-sm">
-              <h3 className="mb-4 text-lg font-semibold text-gray-900">FIR Selection</h3>
+              <h3 className="mb-4 text-lg font-semibold text-gray-900">Writ Selection</h3>
               <div className="space-y-4">
                 {/* Traditional Dropdown */}
                 <label className="block text-sm font-medium text-gray-700">
-                  Select FIR <span className="text-red-500">*</span>
+                  Select Writ <span className="text-red-500">*</span>
                   {loading ? (
                     <div className="mt-1 text-sm text-gray-500">Loading FIRs...</div>
                   ) : firs.length === 0 ? (
                     <div className="mt-1 rounded-md bg-yellow-50 border border-yellow-200 p-3 text-sm text-yellow-800">
-                      No FIRs found. Please create a FIR first.
+                      No writs found. Please create a writ first.
                     </div>
                   ) : (
                     <select
@@ -501,7 +544,7 @@ export default function Proceedings() {
                       <option value="">-- Select a FIR --</option>
                       {firs.map((fir) => (
                         <option key={fir._id} value={fir._id}>
-                          {fir.firNumber} - {fir.petitionerName} ({fir.branch})
+                          {fir.firNumber} - {fir.petitionerName} ({fir.branchName || fir.branch})
                         </option>
                       ))}
                     </select>
@@ -525,7 +568,7 @@ export default function Proceedings() {
                     <input
                       type="text"
                       className="w-full rounded-md border border-gray-300 px-3 py-2 pr-10 focus:border-indigo-500 focus:ring-indigo-500"
-                      placeholder="Search by FIR number, petitioner name, investigating officer, or branch..."
+                      placeholder="Search by WRIT number, petitioner name, investigating officer, or branch..."
                       value={firSearchQuery}
                       onChange={(e) => {
                         setFirSearchQuery(e.target.value)
@@ -560,9 +603,9 @@ export default function Proceedings() {
                             }}
                           >
                             <div className="font-medium text-gray-900">{fir.firNumber}</div>
-                            <div className="text-sm text-gray-600">{fir.petitionerName}</div>
+                        <div className="text-sm text-gray-600">{fir.petitionerName}</div>
                             <div className="text-xs text-gray-500 mt-1">
-                              IO: {fir.investigatingOfficer} | Branch: {fir.branch}
+                          IO: {fir.investigatingOfficers?.length ? fir.investigatingOfficers.map(io => io.name).join(', ') : (fir.investigatingOfficer || '—')} | Branch: {fir.branchName || fir.branch}
                             </div>
                           </button>
                         ))}
@@ -570,7 +613,7 @@ export default function Proceedings() {
                     )}
                     {showFirDropdown && !isSearchingFir && firSearchResults.length === 0 && firSearchQuery.trim() !== '' && (
                       <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg p-4 text-center text-sm text-gray-500">
-                        No FIRs found matching "{firSearchQuery}"
+                        No writs found matching "{firSearchQuery}"
                       </div>
                     )}
                   </div>
@@ -584,7 +627,9 @@ export default function Proceedings() {
                       {(() => {
                         const selectedFir = firs.find((f) => f._id === formData.fir) || 
                           firSearchResults.find((f) => f._id === formData.fir)
-                        return selectedFir ? `${selectedFir.firNumber} - ${selectedFir.petitionerName} (${selectedFir.branch})` : 'Loading...'
+                        return selectedFir
+                          ? `${selectedFir.firNumber} - ${selectedFir.petitionerName} (${selectedFir.branchName || selectedFir.branch})`
+                          : 'Loading...'
                       })()}
                     </div>
                   </div>
@@ -1282,7 +1327,8 @@ export default function Proceedings() {
       )}
 
       {/* Filters and Search */}
-      <section className="rounded-xl border bg-white p-4">
+      {!showCreateForm && (
+        <section className="rounded-xl border bg-white p-4">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-gray-900">All Proceedings</h2>
           <div className="flex flex-wrap gap-3">
@@ -1310,7 +1356,7 @@ export default function Proceedings() {
               value={filterFIR}
               onChange={(e) => setFilterFIR(e.target.value)}
             >
-              <option value="ALL">All FIRs</option>
+              <option value="ALL">All Writs</option>
               {firs.map((fir) => (
                 <option key={fir._id} value={fir._id}>
                   {fir.firNumber}
@@ -1345,7 +1391,7 @@ export default function Proceedings() {
                         </span>
                       </div>
                       <h3 className="mt-1 font-medium text-gray-900">
-                        {fir ? `FIR #${fir.firNumber} - ${fir.petitionerName}` : 'Unknown FIR'}
+                        {fir ? `WRIT #${fir.firNumber} - ${fir.petitionerName}` : 'Unknown Writ'}
                       </h3>
                       {proceeding.summary && (
                         <p className="mt-1 text-sm text-gray-600">{proceeding.summary}</p>
@@ -1374,6 +1420,7 @@ export default function Proceedings() {
           </div>
         )}
       </section>
+      )}
     </div>
   )
 }

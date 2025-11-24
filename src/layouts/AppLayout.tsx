@@ -1,4 +1,4 @@
-import { Outlet, NavLink, useNavigate } from 'react-router-dom'
+import { Outlet, NavLink, useNavigate, Link } from 'react-router-dom'
 import { useAuthStore } from '../store'
 
 export default function AppLayout() {
@@ -11,7 +11,13 @@ export default function AppLayout() {
       <header className="border-b bg-white">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
           <div className="flex items-center gap-6">
-            <div className="text-xl font-bold text-indigo-600">AppealTrax</div>
+            <Link 
+              to="/" 
+              className="text-xl font-bold text-indigo-600 hover:text-indigo-700 cursor-pointer transition-colors"
+              title="Go to Dashboard"
+            >
+              WritTrax
+            </Link>
             <nav className="hidden gap-4 sm:flex">
               <NavLink
                 className={({ isActive }) =>
@@ -31,7 +37,7 @@ export default function AppLayout() {
                 }
                 to="/firs"
               >
-                FIRs
+                Writs
               </NavLink>
               <NavLink
                 className={({ isActive }) =>

@@ -39,23 +39,61 @@ export type FIRStatus =
   | 'CLOSED'
   | 'WITHDRAWN'
 
+export type WritType =
+  | 'BAIL'
+  | 'QUASHING'
+  | 'DIRECTION'
+  | 'SUSPENSION_OF_SENTENCE'
+  | 'PAYROLL'
+  | 'ANY_OTHER'
+
+export type BailSubType = 'ANTICIPATORY' | 'REGULAR'
+
+export interface RespondentDetail {
+  name: string
+  designation: string
+}
+
+export interface InvestigatingOfficerDetail {
+  name: string
+  rank: string
+  posting: string
+  contact: number
+  from?: string | null
+  to?: string | null
+}
+
 export interface FIR {
   _id: string
   firNumber: string
-  title: string
-  description: string
-  dateOfFiling: string
-  sections: string[]
-  branch: string
-  investigatingOfficer: string
-  investigatingOfficerRank: string
-  investigatingOfficerPosting: string
-  investigatingOfficerContact: number
+  title?: string
+  description?: string
+  dateOfFIR: string
+  dateOfFiling?: string
+  branchName: string
+  branch?: string
+  writNumber: string
+  writType: WritType
+  writYear: number
+  writSubType?: BailSubType | null
+  writTypeOther?: string | null
+  underSection: string
+  act: string
+  policeStation: string
+  sections?: string[]
+  investigatingOfficers: InvestigatingOfficerDetail[]
+  // Legacy fields for backward compatibility
+  investigatingOfficer?: string
+  investigatingOfficerRank?: string
+  investigatingOfficerPosting?: string
+  investigatingOfficerContact?: number
+  investigatingOfficerFrom?: string | null
+  investigatingOfficerTo?: string | null
   petitionerName: string
   petitionerFatherName: string
   petitionerAddress: string
   petitionerPrayer: string
-  respondents: string[]
+  respondents: (RespondentDetail | string)[]
   status: FIRStatus | string
   createdAt: string
   updatedAt: string
@@ -148,6 +186,7 @@ export interface Proceeding {
   argumentDetails?: ArgumentDetails
   decisionDetails?: DecisionDetails
   createdBy?: string
+  draft?: boolean
   attachments?: Array<{ fileName: string; fileUrl: string }>
   createdAt?: string
   updatedAt?: string
@@ -164,27 +203,40 @@ export interface CreateProceedingInput {
   argumentDetails?: ArgumentDetails
   decisionDetails?: DecisionDetails
   createdBy?: string // Officer ID (optional - backend sets it from JWT token)
+  draft?: boolean // Whether this is a draft proceeding
   attachments?: Array<{ fileName: string; fileUrl: string }>
 }
 
 export interface CreateFIRInput {
   firNumber: string
-  title: string
-  description: string
-  dateOfFiling: string
-  sections: string[]
-  branch: string
-  investigatingOfficer: string
-  investigatingOfficerRank: string
-  investigatingOfficerPosting: string
-  investigatingOfficerContact: number
+  branchName: string
+  writNumber: string
+  writType: WritType
+  writYear: number
+  writSubType?: BailSubType | null
+  writTypeOther?: string
+  underSection: string
+  act: string
+  policeStation: string
+  dateOfFIR: string
+  sections?: string[]
+  investigatingOfficers: InvestigatingOfficerDetail[]
+  // Legacy fields for backward compatibility
+  investigatingOfficer?: string
+  investigatingOfficerRank?: string
+  investigatingOfficerPosting?: string
+  investigatingOfficerContact?: number
+  investigatingOfficerFrom?: string
+  investigatingOfficerTo?: string
   petitionerName: string
   petitionerFatherName: string
   petitionerAddress: string
   petitionerPrayer: string
-  respondents: string[]
+  respondents: RespondentDetail[]
   status: FIRStatus
   linkedWrits?: string[]
+  // title?: string // Commented out - using petitionerPrayer instead
+  // description?: string // Commented out - using petitionerPrayer instead
 }
 
 

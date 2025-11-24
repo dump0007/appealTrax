@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { createFIR, fetchFIRs } from '../lib/api'
-import type { CreateFIRInput, FIR, FIRStatus } from '../types'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { createFIR, createProceeding, fetchDraftProceedingByFIR, fetchFIRs } from '../lib/api'
+import { useApiCacheStore } from '../store'
+import type { BailSubType, CreateFIRInput, CreateProceedingInput, FIR, FIRStatus, InvestigatingOfficerDetail, RespondentDetail, WritType, ProceedingType, CourtAttendanceMode, WritStatus } from '../types'
 
 const STATUS_OPTIONS: FIRStatus[] = [
   'REGISTERED',
@@ -12,32 +13,57 @@ const STATUS_OPTIONS: FIRStatus[] = [
   'WITHDRAWN',
 ]
 
-const INITIAL_FORM: CreateFIRInput = {
+const WRIT_TYPE_OPTIONS: { label: string; value: WritType }[] = [
+  { label: 'Bail', value: 'BAIL' },
+  { label: 'Quashing', value: 'QUASHING' },
+  { label: 'Direction', value: 'DIRECTION' },
+  { label: 'Suspension of Sentence', value: 'SUSPENSION_OF_SENTENCE' },
+  { label: 'Payroll', value: 'PAYROLL' },
+  { label: 'Any Other', value: 'ANY_OTHER' },
+]
+
+const BAIL_SUB_TYPE_OPTIONS: { label: string; value: BailSubType }[] = [
+  { label: 'Anticipatory', value: 'ANTICIPATORY' },
+  { label: 'Regular', value: 'REGULAR' },
+]
+
+const CURRENT_YEAR = new Date().getFullYear()
+
+const EMPTY_RESPONDENT: RespondentDetail = { name: '', designation: '' }
+const EMPTY_IO: InvestigatingOfficerDetail = { name: '', rank: '', posting: '', contact: 0, from: '', to: '' }
+
+const createInitialForm = (): CreateFIRInput => ({
   firNumber: '',
-  title: '',
-  description: '',
-  dateOfFiling: '',
+  branchName: '',
+  writNumber: '',
+  writType: 'BAIL',
+  writYear: CURRENT_YEAR,
+  writSubType: 'ANTICIPATORY',
+  writTypeOther: '',
+  underSection: '',
+  act: '',
+  policeStation: '',
+  dateOfFIR: '',
   sections: [],
-  branch: '',
-  investigatingOfficer: '',
-  investigatingOfficerRank: '',
-  investigatingOfficerPosting: '',
-  investigatingOfficerContact: 0,
+  investigatingOfficers: [{ ...EMPTY_IO }],
   petitionerName: '',
   petitionerFatherName: '',
   petitionerAddress: '',
   petitionerPrayer: '',
-  respondents: [],
+  respondents: [{ ...EMPTY_RESPONDENT }],
   status: 'REGISTERED',
   linkedWrits: [],
-}
+  // title: '', // Commented out - using petitionerPrayer instead
+  // description: '', // Commented out - using petitionerPrayer instead
+})
 
 export default function FIRs() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [firs, setFirs] = useState<FIR[]>([])
   const [loading, setLoading] = useState(true)
   const [formOpen, setFormOpen] = useState(false)
-  const [formData, setFormData] = useState<CreateFIRInput>(INITIAL_FORM)
+  const [formData, setFormData] = useState<CreateFIRInput>(createInitialForm())
   const [formSubmitting, setFormSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -45,13 +71,93 @@ export default function FIRs() {
   const [branchFilter, setBranchFilter] = useState('')
   const [visibleCount, setVisibleCount] = useState(20)
   const [listError, setListError] = useState<string | null>(null)
+  const [currentStep, setCurrentStep] = useState<1 | 2>(1)
+  const [createdFIRId, setCreatedFIRId] = useState<string | null>(null)
+  const [firsWithDrafts, setFirsWithDrafts] = useState<Set<string>>(new Set())
+  const [proceedingFormData, setProceedingFormData] = useState({
+    type: 'NOTICE_OF_MOTION' as ProceedingType,
+    summary: '',
+    details: '',
+    hearingDetails: {
+      dateOfHearing: '',
+      judgeName: '',
+      courtNumber: '',
+    },
+    noticeOfMotion: {
+      attendanceMode: 'BY_FORMAT' as CourtAttendanceMode,
+      formatSubmitted: false,
+      formatFilledBy: { name: '', rank: '', mobile: '' },
+      appearingAG: { name: '', rank: '', mobile: '' },
+      attendingOfficer: { name: '', rank: '', mobile: '' },
+      nextDateOfHearing: '',
+      officerDeputedForReply: '',
+      vettingOfficerDetails: '',
+      replyFiled: false,
+      replyFilingDate: '',
+      advocateGeneralName: '',
+      investigatingOfficerName: '',
+      replyScrutinizedByHC: false,
+    },
+    replyTracking: {
+      proceedingInCourt: '',
+      orderInShort: '',
+      nextActionablePoint: '',
+      nextDateOfHearing: '',
+    },
+    argumentDetails: {
+      nextDateOfHearing: '',
+    },
+    decisionDetails: {
+      writStatus: 'PENDING' as WritStatus,
+      remarks: '',
+      decisionByCourt: '',
+      dateOfDecision: '',
+    },
+  })
+
+  // Auto-open form if navigate from dashboard with create=true
+  useEffect(() => {
+    const shouldOpenForm = searchParams.get('create') === 'true'
+    if (shouldOpenForm) {
+      setFormOpen(true)
+      // Clean up URL by removing query param
+      const newSearchParams = new URLSearchParams(searchParams)
+      newSearchParams.delete('create')
+      setSearchParams(newSearchParams, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
 
   useEffect(() => {
     async function load() {
       try {
+        const cache = useApiCacheStore.getState()
+        // Check cache first for instant loading
+        const cachedFirs = cache.getCachedFirs()
+        if (cachedFirs) {
+          setFirs(cachedFirs)
+          setLoading(false) // Show cached data immediately
+        }
+
+        // Fetch fresh data in the background
         setLoading(true)
         const data = await fetchFIRs()
         setFirs(data)
+        
+        // Check for drafts for each FIR
+        const draftSet = new Set<string>()
+        await Promise.all(
+          data.map(async (fir) => {
+            try {
+              const draft = await fetchDraftProceedingByFIR(fir._id)
+              if (draft) {
+                draftSet.add(fir._id)
+              }
+            } catch {
+              // Ignore errors when checking for drafts
+            }
+          })
+        )
+        setFirsWithDrafts(draftSet)
         setListError(null)
       } catch (err) {
         setListError(err instanceof Error ? err.message : 'Unable to fetch FIRs')
@@ -63,24 +169,140 @@ export default function FIRs() {
     load()
   }, [])
 
+  async function handleResumeDraft(firId: string) {
+    try {
+      setFormSubmitting(true)
+      setFormError(null)
+      
+      // Fetch the FIR and draft proceeding
+      const fir = firs.find(f => f._id === firId)
+      if (!fir) {
+        setFormError('FIR not found')
+        return
+      }
+      
+      const draft = await fetchDraftProceedingByFIR(firId)
+      if (!draft) {
+        setFormError('Draft not found')
+        return
+      }
+      
+      // Set form data from FIR
+      setFormData({
+        firNumber: fir.firNumber,
+        branchName: fir.branchName || '',
+        writNumber: fir.writNumber || '',
+        writType: fir.writType,
+        writYear: fir.writYear || CURRENT_YEAR,
+        writSubType: fir.writSubType || undefined,
+        writTypeOther: fir.writTypeOther || '',
+        underSection: fir.underSection || '',
+        act: fir.act || '',
+        policeStation: fir.policeStation || '',
+        dateOfFIR: fir.dateOfFIR ? new Date(fir.dateOfFIR).toISOString().split('T')[0] : '',
+        sections: fir.sections || [],
+        investigatingOfficers: fir.investigatingOfficers || [{ ...EMPTY_IO }],
+        petitionerName: fir.petitionerName || '',
+        petitionerFatherName: fir.petitionerFatherName || '',
+        petitionerAddress: fir.petitionerAddress || '',
+        petitionerPrayer: fir.petitionerPrayer || '',
+        respondents: (fir.respondents && Array.isArray(fir.respondents) 
+          ? fir.respondents.filter(r => typeof r === 'object' && r !== null) as RespondentDetail[]
+          : [{ ...EMPTY_RESPONDENT }]),
+        status: fir.status as FIRStatus,
+        // title: fir.title || '', // Commented out - using petitionerPrayer instead
+        // description: fir.description || '', // Commented out - using petitionerPrayer instead
+      })
+      
+      // Set proceeding form data from draft
+      if (draft.hearingDetails) {
+        setProceedingFormData({
+          type: draft.type,
+          summary: draft.summary || '',
+          details: draft.details || '',
+          hearingDetails: {
+            dateOfHearing: draft.hearingDetails.dateOfHearing ? new Date(draft.hearingDetails.dateOfHearing).toISOString().split('T')[0] : '',
+            judgeName: draft.hearingDetails.judgeName || '',
+            courtNumber: draft.hearingDetails.courtNumber || '',
+          },
+          noticeOfMotion: draft.noticeOfMotion ? {
+            attendanceMode: draft.noticeOfMotion.attendanceMode || 'BY_FORMAT',
+            formatSubmitted: draft.noticeOfMotion.formatSubmitted || false,
+            formatFilledBy: draft.noticeOfMotion.formatFilledBy ? {
+              name: draft.noticeOfMotion.formatFilledBy.name || '',
+              rank: draft.noticeOfMotion.formatFilledBy.rank || '',
+              mobile: draft.noticeOfMotion.formatFilledBy.mobile || '',
+            } : { name: '', rank: '', mobile: '' },
+            appearingAG: draft.noticeOfMotion.appearingAG ? {
+              name: draft.noticeOfMotion.appearingAG.name || '',
+              rank: draft.noticeOfMotion.appearingAG.rank || '',
+              mobile: draft.noticeOfMotion.appearingAG.mobile || '',
+            } : { name: '', rank: '', mobile: '' },
+            attendingOfficer: draft.noticeOfMotion.attendingOfficer ? {
+              name: draft.noticeOfMotion.attendingOfficer.name || '',
+              rank: draft.noticeOfMotion.attendingOfficer.rank || '',
+              mobile: draft.noticeOfMotion.attendingOfficer.mobile || '',
+            } : { name: '', rank: '', mobile: '' },
+            nextDateOfHearing: draft.noticeOfMotion.nextDateOfHearing || '',
+            officerDeputedForReply: draft.noticeOfMotion.officerDeputedForReply || '',
+            vettingOfficerDetails: draft.noticeOfMotion.vettingOfficerDetails || '',
+            replyFiled: draft.noticeOfMotion.replyFiled || false,
+            replyFilingDate: draft.noticeOfMotion.replyFilingDate || '',
+            advocateGeneralName: draft.noticeOfMotion.advocateGeneralName || '',
+            investigatingOfficerName: draft.noticeOfMotion.investigatingOfficerName || '',
+            replyScrutinizedByHC: draft.noticeOfMotion.replyScrutinizedByHC || false,
+          } : proceedingFormData.noticeOfMotion,
+          replyTracking: draft.replyTracking ? {
+            proceedingInCourt: draft.replyTracking.proceedingInCourt || '',
+            orderInShort: draft.replyTracking.orderInShort || '',
+            nextActionablePoint: draft.replyTracking.nextActionablePoint || '',
+            nextDateOfHearing: draft.replyTracking.nextDateOfHearing || '',
+          } : proceedingFormData.replyTracking,
+          argumentDetails: draft.argumentDetails ? {
+            nextDateOfHearing: draft.argumentDetails.nextDateOfHearing || '',
+          } : proceedingFormData.argumentDetails,
+          decisionDetails: draft.decisionDetails ? {
+            writStatus: draft.decisionDetails.writStatus || 'PENDING',
+            remarks: draft.decisionDetails.remarks || '',
+            decisionByCourt: draft.decisionDetails.decisionByCourt || '',
+            dateOfDecision: draft.decisionDetails.dateOfDecision || '',
+          } : proceedingFormData.decisionDetails,
+        })
+      }
+      
+      setCreatedFIRId(firId)
+      setCurrentStep(2)
+      setFormOpen(true)
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Failed to load draft')
+    } finally {
+      setFormSubmitting(false)
+    }
+  }
+
   const filteredFirs = useMemo(() => {
     return firs.filter((fir) => {
-      const matchesSearch =
-        !search ||
-        [
-          fir.firNumber,
-          fir.title,
-          fir.petitionerName,
-          fir.branch,
-          fir.investigatingOfficer,
-        ]
-          .join(' ')
-          .toLowerCase()
-          .includes(search.toLowerCase())
+      const searchHaystack = [
+        fir.firNumber,
+        fir.petitionerName,
+        fir.branchName,
+        fir.branch,
+        fir.policeStation,
+        fir.investigatingOfficer, // Legacy field
+        fir.investigatingOfficers?.map(io => io.name).join(' '), // New array field
+        fir.writNumber,
+        fir.underSection,
+        fir.act,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+
+      const matchesSearch = !search || searchHaystack.includes(search.toLowerCase())
       const matchesStatus = statusFilter === 'all' || fir.status === statusFilter
+      const branchValue = (fir.branchName || fir.branch || '').toLowerCase()
       const matchesBranch =
-        !branchFilter ||
-        fir.branch.toLowerCase().includes(branchFilter.trim().toLowerCase())
+        !branchFilter || branchValue.includes(branchFilter.trim().toLowerCase())
       return matchesSearch && matchesStatus && matchesBranch
     })
   }, [firs, search, statusFilter, branchFilter])
@@ -92,11 +314,48 @@ export default function FIRs() {
     setFormData((prev) => ({ ...prev, [key]: value }))
   }
 
-  function parseListInput(value: string) {
-    return value
-      .split(',')
-      .map((item) => item.trim())
-      .filter(Boolean)
+  function updateRespondent(index: number, key: keyof RespondentDetail, value: string) {
+    setFormData((prev) => {
+      const next = [...prev.respondents]
+      next[index] = { ...next[index], [key]: value }
+      return { ...prev, respondents: next }
+    })
+  }
+
+  function addRespondentRow() {
+    setFormData((prev) => ({ ...prev, respondents: [...prev.respondents, { ...EMPTY_RESPONDENT }] }))
+  }
+
+  function removeRespondentRow(index: number) {
+    setFormData((prev) => {
+      if (prev.respondents.length === 1) {
+        return prev
+      }
+      const next = prev.respondents.filter((_, i) => i !== index)
+      return { ...prev, respondents: next.length ? next : [{ ...EMPTY_RESPONDENT }] }
+    })
+  }
+
+  function updateIO(index: number, key: keyof InvestigatingOfficerDetail, value: string | number | null) {
+    setFormData((prev) => {
+      const next = [...prev.investigatingOfficers]
+      next[index] = { ...next[index], [key]: value }
+      return { ...prev, investigatingOfficers: next }
+    })
+  }
+
+  function addIORow() {
+    setFormData((prev) => ({ ...prev, investigatingOfficers: [...prev.investigatingOfficers, { ...EMPTY_IO }] }))
+  }
+
+  function removeIORow(index: number) {
+    setFormData((prev) => {
+      if (prev.investigatingOfficers.length === 1) {
+        return prev // Keep at least one
+      }
+      const next = prev.investigatingOfficers.filter((_, i) => i !== index)
+      return { ...prev, investigatingOfficers: next }
+    })
   }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -104,21 +363,204 @@ export default function FIRs() {
     try {
       setFormSubmitting(true)
       setFormError(null)
+      const respondents = formData.respondents
+        .map((r) => ({
+          name: r.name.trim(),
+          designation: r.designation.trim(),
+        }))
+        .filter((r) => r.name && r.designation)
+
+      if (respondents.length === 0) {
+        setFormError('Please provide at least one respondent with name and designation.')
+        setFormSubmitting(false)
+        return
+      }
+
+      // Validate and clean investigatingOfficers array
+      const investigatingOfficers = formData.investigatingOfficers
+        .map((io) => ({
+          name: io.name.trim(),
+          rank: io.rank.trim(),
+          posting: io.posting.trim(),
+          contact: io.contact || 0,
+          from: io.from && io.from.trim() ? io.from.trim() : null,
+          to: io.to && io.to.trim() ? io.to.trim() : null,
+        }))
+        .filter((io) => io.name && io.rank && io.posting)
+
+      if (investigatingOfficers.length === 0) {
+        setFormError('Please provide at least one investigating officer with name, rank, and posting.')
+        setFormSubmitting(false)
+        return
+      }
+
       const payload: CreateFIRInput = {
         ...formData,
-        sections: formData.sections,
-        respondents: formData.respondents,
+        sections: formData.sections && formData.sections.length ? formData.sections : [formData.underSection],
+        respondents,
+        investigatingOfficers,
         linkedWrits: formData.linkedWrits?.filter((id) => id),
+        writSubType: formData.writType === 'BAIL' ? formData.writSubType : null,
+        writTypeOther: formData.writType === 'ANY_OTHER' ? formData.writTypeOther : undefined,
+        investigatingOfficerContact: Number(formData.investigatingOfficerContact) || 0,
+        investigatingOfficerFrom: formData.investigatingOfficerFrom || undefined,
+        investigatingOfficerTo: formData.investigatingOfficerTo || undefined,
+        // title: '', // Commented out - using petitionerPrayer instead
+        // description: '', // Commented out - using petitionerPrayer instead
       }
-      const created = await createFIR(payload)
-      setFirs((prev) => [created, ...prev])
-      setFormData(INITIAL_FORM)
-      setFormOpen(false)
+
+      const newFIR = await createFIR(payload)
+      // Cache is invalidated by createFIR, so fetch fresh list
+      const freshData = await fetchFIRs()
+      setFirs(freshData)
+      
+      // Move to Step 2 with the created FIR ID
+      if (newFIR && newFIR._id) {
+        setCreatedFIRId(newFIR._id)
+        setCurrentStep(2)
+        // Pre-fill proceeding form with FIR date
+        setProceedingFormData(prev => ({
+          ...prev,
+          hearingDetails: {
+            ...prev.hearingDetails,
+            dateOfHearing: formData.dateOfFIR || '',
+          },
+        }))
+      } else {
+        setFormError('FIR created but could not proceed to next step. Please create proceeding manually.')
+        setFormData(createInitialForm())
+        setFormOpen(false)
+      }
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Failed to create FIR')
     } finally {
       setFormSubmitting(false)
     }
+  }
+
+  async function handleSaveDraft() {
+    if (!createdFIRId) {
+      setFormError('FIR ID is missing. Please go back and try again.')
+      return
+    }
+
+    try {
+      setFormSubmitting(true)
+      setFormError(null)
+
+      const payload: CreateProceedingInput = {
+        fir: createdFIRId,
+        type: proceedingFormData.type,
+        summary: proceedingFormData.summary || undefined,
+        details: proceedingFormData.details || undefined,
+        hearingDetails: {
+          dateOfHearing: proceedingFormData.hearingDetails.dateOfHearing || new Date().toISOString().split('T')[0],
+          judgeName: proceedingFormData.hearingDetails.judgeName || '',
+          courtNumber: proceedingFormData.hearingDetails.courtNumber || '',
+        },
+        noticeOfMotion: proceedingFormData.type === 'NOTICE_OF_MOTION' ? proceedingFormData.noticeOfMotion : undefined,
+        replyTracking: proceedingFormData.type === 'TO_FILE_REPLY' ? proceedingFormData.replyTracking : undefined,
+        argumentDetails: proceedingFormData.type === 'ARGUMENT' ? proceedingFormData.argumentDetails : undefined,
+        decisionDetails: proceedingFormData.type === 'DECISION' ? proceedingFormData.decisionDetails : undefined,
+        draft: true, // Mark as draft
+      }
+
+      await createProceeding(payload)
+      // Close form but keep state for resuming
+      setFormOpen(false)
+      setCurrentStep(1)
+      // Refresh FIRs list
+      const freshData = await fetchFIRs()
+      setFirs(freshData)
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Failed to save draft')
+    } finally {
+      setFormSubmitting(false)
+    }
+  }
+
+  async function handleProceedingSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!createdFIRId) {
+      setFormError('FIR ID is missing. Please go back and try again.')
+      return
+    }
+
+    try {
+      setFormSubmitting(true)
+      setFormError(null)
+
+      const payload: CreateProceedingInput = {
+        fir: createdFIRId,
+        type: proceedingFormData.type,
+        summary: proceedingFormData.summary || undefined,
+        details: proceedingFormData.details || undefined,
+        hearingDetails: {
+          dateOfHearing: proceedingFormData.hearingDetails.dateOfHearing,
+          judgeName: proceedingFormData.hearingDetails.judgeName,
+          courtNumber: proceedingFormData.hearingDetails.courtNumber,
+        },
+        noticeOfMotion: proceedingFormData.type === 'NOTICE_OF_MOTION' ? proceedingFormData.noticeOfMotion : undefined,
+        replyTracking: proceedingFormData.type === 'TO_FILE_REPLY' ? proceedingFormData.replyTracking : undefined,
+        argumentDetails: proceedingFormData.type === 'ARGUMENT' ? proceedingFormData.argumentDetails : undefined,
+        decisionDetails: proceedingFormData.type === 'DECISION' ? proceedingFormData.decisionDetails : undefined,
+        draft: false, // Final submission
+      }
+
+      await createProceeding(payload)
+      // Reset everything and close form
+      setFormData(createInitialForm())
+      setProceedingFormData({
+        type: 'NOTICE_OF_MOTION',
+        summary: '',
+        details: '',
+        hearingDetails: { dateOfHearing: '', judgeName: '', courtNumber: '' },
+        noticeOfMotion: {
+          attendanceMode: 'BY_FORMAT',
+          formatSubmitted: false,
+          formatFilledBy: { name: '', rank: '', mobile: '' },
+          appearingAG: { name: '', rank: '', mobile: '' },
+          attendingOfficer: { name: '', rank: '', mobile: '' },
+          nextDateOfHearing: '',
+          officerDeputedForReply: '',
+          vettingOfficerDetails: '',
+          replyFiled: false,
+          replyFilingDate: '',
+          advocateGeneralName: '',
+          investigatingOfficerName: '',
+          replyScrutinizedByHC: false,
+        },
+        replyTracking: {
+          proceedingInCourt: '',
+          orderInShort: '',
+          nextActionablePoint: '',
+          nextDateOfHearing: '',
+        },
+        argumentDetails: {
+          nextDateOfHearing: '',
+        },
+        decisionDetails: {
+          writStatus: 'PENDING',
+          remarks: '',
+          decisionByCourt: '',
+          dateOfDecision: '',
+        },
+      })
+      setCreatedFIRId(null)
+      setCurrentStep(1)
+      setFormOpen(false)
+      // Refresh FIRs list
+      const freshData = await fetchFIRs()
+      setFirs(freshData)
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Failed to create proceeding')
+    } finally {
+      setFormSubmitting(false)
+    }
+  }
+
+  function handleBackToStep1() {
+    setCurrentStep(1)
   }
 
   return (
@@ -134,9 +576,9 @@ export default function FIRs() {
             ← Back
           </button>
           <div>
-            <h1 className="text-2xl font-semibold text-gray-900">FIRs</h1>
+            <h1 className="text-2xl font-semibold text-gray-900">Writs</h1>
             <p className="text-sm text-gray-500">
-              Create new FIRs and manage existing investigations in one place.
+              Create new writs and manage existing investigations in one place.
             </p>
           </div>
         </div>
@@ -145,144 +587,388 @@ export default function FIRs() {
           onClick={() => setFormOpen((v) => !v)}
           className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
         >
-          {formOpen ? 'Close Form' : 'Create New FIR'}
+          {formOpen ? 'Close Form' : 'Create New Writ'}
         </button>
       </div>
 
       {formOpen && (
         <section className="rounded-xl border bg-white p-6">
-          <h2 className="text-lg font-semibold text-gray-900">New FIR Details</h2>
-          <p className="text-sm text-gray-500">
-            Fill out all mandatory fields to register a new FIR in the system.
-          </p>
-          <form className="mt-4 space-y-4" onSubmit={handleSubmit}>
-            <div className="grid gap-4 md:grid-cols-2">
-              <TextField
-                label="FIR Number"
-                value={formData.firNumber}
-                onChange={(value) => handleInputChange('firNumber', value)}
-                required
-              />
-              <TextField
-                label="Title"
-                value={formData.title}
-                onChange={(value) => handleInputChange('title', value)}
-                required
-              />
-              <label className="text-sm font-medium text-gray-700">
-                Date of Filing
-                <input
-                  type="date"
-                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-                  value={formData.dateOfFiling}
-                  onChange={(e) => handleInputChange('dateOfFiling', e.target.value)}
+          {/* Step Indicator */}
+          <div className="mb-6 flex items-center justify-center gap-4">
+            <div className="flex items-center gap-2">
+              <div className={`flex h-10 w-10 items-center justify-center rounded-full border-2 ${
+                currentStep >= 1 ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-gray-300 bg-white text-gray-400'
+              }`}>
+                {currentStep > 1 ? (
+                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                ) : (
+                  <span className="text-sm font-semibold">1</span>
+                )}
+              </div>
+              <div className="hidden sm:block">
+                <div className={`text-sm font-medium ${currentStep >= 1 ? 'text-indigo-600' : 'text-gray-400'}`}>
+                  Step 1: Application Details
+                </div>
+                <div className="text-xs text-gray-500">(6 Sections)</div>
+              </div>
+            </div>
+            <div className={`h-0.5 w-16 ${currentStep >= 2 ? 'bg-indigo-600' : 'bg-gray-300'}`} />
+            <div className="flex items-center gap-2">
+              <div className={`flex h-10 w-10 items-center justify-center rounded-full border-2 ${
+                currentStep >= 2 ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-gray-300 bg-white text-gray-400'
+              }`}>
+                <span className="text-sm font-semibold">2</span>
+              </div>
+              <div className="hidden sm:block">
+                <div className={`text-sm font-medium ${currentStep >= 2 ? 'text-indigo-600' : 'text-gray-400'}`}>
+                  Step 2: Proceedings & Decision Details
+                </div>
+                <div className="text-xs text-gray-500">(3 Sections)</div>
+              </div>
+            </div>
+          </div>
+
+          {currentStep === 1 ? (
+            <>
+              <h2 className="text-lg font-semibold text-gray-900">Add New Writ Application</h2>
+              <p className="text-sm text-gray-500">
+                Capture branch, writ, FIR, officer, petitioner and respondent details exactly as filed in the application.
+              </p>
+              <form className="mt-4 space-y-6" onSubmit={handleSubmit}>
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <h3 className="text-base font-semibold text-gray-900">Section 1 · Name of Branch</h3>
+              <p className="text-sm text-gray-500">Enter the name of the branch processing this writ application.</p>
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <TextField
+                  label="Name of Branch"
+                  value={formData.branchName}
+                  onChange={(value) => handleInputChange('branchName', value)}
                   required
                 />
-              </label>
-              <TextField
-                label="Branch"
-                value={formData.branch}
-                onChange={(value) => handleInputChange('branch', value)}
-                required
-              />
-              <TextField
-                label="Investigating Officer"
-                value={formData.investigatingOfficer}
-                onChange={(value) => handleInputChange('investigatingOfficer', value)}
-                required
-              />
-              <TextField
-                label="Officer Rank"
-                value={formData.investigatingOfficerRank}
-                onChange={(value) => handleInputChange('investigatingOfficerRank', value)}
-                required
-              />
-              <TextField
-                label="Officer Posting"
-                value={formData.investigatingOfficerPosting}
-                onChange={(value) => handleInputChange('investigatingOfficerPosting', value)}
-                required
-              />
-              <label className="text-sm font-medium text-gray-700">
-                Officer Contact
-                <input
-                  type="number"
-                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-                  value={formData.investigatingOfficerContact || ''}
-                  onChange={(e) =>
-                    handleInputChange('investigatingOfficerContact', Number(e.target.value) || 0)
-                  }
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+              <h3 className="text-base font-semibold text-gray-900">Section 2 · Writ Details</h3>
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <TextField
+                  label="Writ Number"
+                  value={formData.writNumber}
+                  onChange={(value) => handleInputChange('writNumber', value)}
                   required
                 />
-              </label>
-              <TextField
-                label="Petitioner Name"
-                value={formData.petitionerName}
-                onChange={(value) => handleInputChange('petitionerName', value)}
-                required
-              />
-              <TextField
-                label="Petitioner Father Name"
-                value={formData.petitionerFatherName}
-                onChange={(value) => handleInputChange('petitionerFatherName', value)}
-                required
-              />
-              <TextField
-                label="Petitioner Address"
-                value={formData.petitionerAddress}
-                onChange={(value) => handleInputChange('petitionerAddress', value)}
-                required
-              />
-              <TextField
-                label="Petitioner Prayer"
-                value={formData.petitionerPrayer}
-                onChange={(value) => handleInputChange('petitionerPrayer', value)}
-                required
-              />
-              <TextField
-                label="Sections (comma separated)"
-                value={formData.sections.join(', ')}
-                onChange={(value) => handleInputChange('sections', parseListInput(value))}
-                placeholder="IPC 420, IPC 120B"
-              />
-              <TextField
-                label="Respondents (comma separated)"
-                value={formData.respondents.join(', ')}
-                onChange={(value) => handleInputChange('respondents', parseListInput(value))}
-                placeholder="Respondent 1, Respondent 2"
-              />
-              <TextField
-                label="Linked Writ IDs (comma separated)"
-                value={(formData.linkedWrits || []).join(', ')}
-                onChange={(value) => handleInputChange('linkedWrits', parseListInput(value))}
-                placeholder="Optional Mongo IDs"
-              />
-              <label className="text-sm font-medium text-gray-700">
-                Status
-                <select
-                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-                  value={formData.status}
-                  onChange={(e) => handleInputChange('status', e.target.value as FIRStatus)}
+                <label className="text-sm font-medium text-gray-700">
+                  Type of Writ
+                  <select
+                    className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                    value={formData.writType}
+                    onChange={(e) => {
+                      const value = e.target.value as WritType
+                      setFormData((prev) => ({
+                        ...prev,
+                        writType: value,
+                        writSubType: value === 'BAIL' ? prev.writSubType || 'ANTICIPATORY' : undefined,
+                        writTypeOther: value === 'ANY_OTHER' ? prev.writTypeOther : '',
+                      }))
+                    }}
+                    required
+                  >
+                    {WRIT_TYPE_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="text-sm font-medium text-gray-700">
+                  Year
+                  <input
+                    type="number"
+                    min={1900}
+                    max={3000}
+                    className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                    value={formData.writYear}
+                    onChange={(e) =>
+                      handleInputChange('writYear', Number(e.target.value) || CURRENT_YEAR)
+                    }
+                    required
+                  />
+                </label>
+                {formData.writType === 'BAIL' && (
+                  <label className="text-sm font-medium text-gray-700">
+                    Sub Type
+                    <select
+                      className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                      value={formData.writSubType || 'ANTICIPATORY'}
+                      onChange={(e) =>
+                        handleInputChange('writSubType', e.target.value as BailSubType)
+                      }
+                      required
+                    >
+                      {BAIL_SUB_TYPE_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                {formData.writType === 'ANY_OTHER' && (
+                  <TextField
+                    label="Specify Writ Type"
+                    value={formData.writTypeOther || ''}
+                    onChange={(value) => handleInputChange('writTypeOther', value)}
+                    required
+                  />
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+              <h3 className="text-base font-semibold text-gray-900">Section 3 · FIR Details</h3>
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <TextField
+                  label="FIR Number"
+                  value={formData.firNumber}
+                  onChange={(value) => handleInputChange('firNumber', value)}
+                  required
+                />
+                <TextField
+                  label="Under Section"
+                  value={formData.underSection}
+                  onChange={(value) => handleInputChange('underSection', value)}
+                  required
+                />
+                <TextField
+                  label="Act"
+                  value={formData.act}
+                  onChange={(value) => handleInputChange('act', value)}
+                  required
+                />
+                <label className="text-sm font-medium text-gray-700">
+                  Date of FIR
+                  <input
+                    type="date"
+                    className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                    value={formData.dateOfFIR}
+                    onChange={(e) => handleInputChange('dateOfFIR', e.target.value)}
+                    required
+                  />
+                </label>
+                <TextField
+                  label="Police Station"
+                  value={formData.policeStation}
+                  onChange={(value) => handleInputChange('policeStation', value)}
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+              <div className="flex items-center justify-between">
+                <h3 className="text-base font-semibold text-gray-900">
+                  Section 4 · Investigation Officer Details
+                </h3>
+                <button
+                  type="button"
+                  onClick={addIORow}
+                  className="rounded-md border-2 border-purple-500 px-3 py-1.5 text-sm font-medium text-purple-600 hover:bg-purple-50"
                 >
-                  {STATUS_OPTIONS.map((status) => (
-                    <option key={status} value={status}>
-                      {formatStatusLabel(status)}
-                    </option>
-                  ))}
-                </select>
+                  + ADD ANOTHER INVESTIGATION OFFICER
+                </button>
+              </div>
+              <p className="mt-1 text-xs text-gray-500">At least one investigating officer is required.</p>
+              {formData.investigatingOfficers.map((io, index) => (
+                <div key={index} className="mt-4 rounded-lg border border-gray-300 bg-gray-50 p-4">
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-sm font-medium text-gray-700">
+                      Investigating Officer {index + 1}
+                    </span>
+                    {formData.investigatingOfficers.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeIORow(index)}
+                        className="text-xs font-medium text-red-600 hover:text-red-700"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <TextField
+                      label="Officer Name"
+                      value={io.name}
+                      onChange={(value) => updateIO(index, 'name', value)}
+                      required
+                    />
+                    <TextField
+                      label="Rank"
+                      value={io.rank}
+                      onChange={(value) => updateIO(index, 'rank', value)}
+                      required
+                    />
+                    <TextField
+                      label="Posting"
+                      value={io.posting}
+                      onChange={(value) => updateIO(index, 'posting', value)}
+                      required
+                    />
+                    <label className="text-sm font-medium text-gray-700">
+                      Contact Number
+                      <input
+                        type="tel"
+                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                        value={io.contact || ''}
+                        onChange={(e) =>
+                          updateIO(index, 'contact', Number(e.target.value) || 0)
+                        }
+                        required
+                      />
+                    </label>
+                    <label className="text-sm font-medium text-gray-700">
+                      From (Date)
+                      <input
+                        type="date"
+                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                        value={io.from || ''}
+                        onChange={(e) => updateIO(index, 'from', e.target.value || null)}
+                      />
+                    </label>
+                    <label className="text-sm font-medium text-gray-700">
+                      To (Date)
+                      <input
+                        type="date"
+                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                        value={io.to || ''}
+                        onChange={(e) => updateIO(index, 'to', e.target.value || null)}
+                      />
+                    </label>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+              <h3 className="text-base font-semibold text-gray-900">Section 5 · Petitioner Details</h3>
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <TextField
+                  label="Petitioner Name"
+                  value={formData.petitionerName}
+                  onChange={(value) => handleInputChange('petitionerName', value)}
+                  required
+                />
+                <TextField
+                  label="Petitioner Father Name"
+                  value={formData.petitionerFatherName}
+                  onChange={(value) => handleInputChange('petitionerFatherName', value)}
+                  required
+                />
+              </div>
+              <label className="mt-4 block text-sm font-medium text-gray-700">
+                Address
+                <textarea
+                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                  rows={3}
+                  value={formData.petitionerAddress}
+                  onChange={(e) => handleInputChange('petitionerAddress', e.target.value)}
+                  required
+                />
+              </label>
+              <label className="mt-4 block text-sm font-medium text-gray-700">
+                Prayer
+                <textarea
+                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                  rows={3}
+                  value={formData.petitionerPrayer}
+                  onChange={(e) => handleInputChange('petitionerPrayer', e.target.value)}
+                  required
+                />
               </label>
             </div>
 
-            <label className="text-sm font-medium text-gray-700">
-              Description
-              <textarea
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-                rows={4}
-                value={formData.description}
-                onChange={(e) => handleInputChange('description', e.target.value)}
-                required
-              />
-            </label>
+            <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-base font-semibold text-gray-900">Section 6 · Respondent Details</h3>
+                  <p className="text-sm text-gray-500">
+                    Add all respondents with their official designations.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={addRespondentRow}
+                  className="rounded-md border border-indigo-600 px-3 py-1.5 text-sm font-medium text-indigo-600 hover:bg-indigo-50"
+                >
+                  + Add Respondent
+                </button>
+              </div>
+              <div className="mt-4 space-y-3">
+                {formData.respondents.map((respondent, index) => (
+                  <div
+                    key={index}
+                    className="rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-gray-900">Respondent #{index + 1}</span>
+                      {formData.respondents.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeRespondentRow(index)}
+                          className="text-xs font-medium text-red-600 hover:underline"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                    <div className="mt-3 grid gap-3 md:grid-cols-2">
+                      <label className="text-sm font-medium text-gray-700">
+                        Name
+                        <input
+                          type="text"
+                          className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                          value={respondent.name}
+                          onChange={(e) => updateRespondent(index, 'name', e.target.value)}
+                          required
+                        />
+                      </label>
+                      <label className="text-sm font-medium text-gray-700">
+                        Designation
+                        <input
+                          type="text"
+                          className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                          value={respondent.designation}
+                          onChange={(e) => updateRespondent(index, 'designation', e.target.value)}
+                          required
+                        />
+                      </label>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+              <h3 className="text-base font-semibold text-gray-900">Case Status</h3>
+              <p className="text-sm text-gray-500">Maintain dashboard stats by tagging the right status.</p>
+              <div className="mt-3 grid gap-4 md:grid-cols-2">
+                <label className="text-sm font-medium text-gray-700">
+                  FIR Status
+                  <select
+                    className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                    value={formData.status}
+                    onChange={(e) => handleInputChange('status', e.target.value as FIRStatus)}
+                  >
+                    {STATUS_OPTIONS.map((status) => (
+                      <option key={status} value={status}>
+                        {formatStatusLabel(status)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            </div>
 
             {formError && (
               <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -290,34 +976,325 @@ export default function FIRs() {
               </div>
             )}
 
-            <div className="flex items-center justify-end gap-3">
+            <div className="flex items-center justify-between">
               <button
                 type="button"
                 onClick={() => {
-                  setFormData(INITIAL_FORM)
+                  setFormData(createInitialForm())
                   setFormOpen(false)
                   setFormError(null)
+                  setCurrentStep(1)
+                  setCreatedFIRId(null)
                 }}
-                className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+                className="text-sm font-medium text-indigo-600 hover:underline"
               >
-                Cancel
+                BACK
               </button>
               <button
                 type="submit"
                 disabled={formSubmitting}
-                className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
+                className="rounded-md bg-indigo-600 px-6 py-2.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
               >
-                {formSubmitting ? 'Saving...' : 'Save FIR'}
+                {formSubmitting ? 'Saving...' : 'NEXT'}
               </button>
             </div>
           </form>
+            </>
+          ) : (
+            <>
+              <h2 className="text-lg font-semibold text-gray-900">Proceedings & Decision Details</h2>
+              <p className="text-sm text-gray-500">
+                Add proceeding details for the writ application you just created.
+              </p>
+              <form className="mt-4 space-y-6" onSubmit={handleProceedingSubmit}>
+                {/* Section 1: Hearing Details */}
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-6 shadow-sm">
+                  <h3 className="mb-4 text-lg font-semibold text-gray-900">Hearing Details</h3>
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <label className="text-sm font-medium text-gray-700">
+                      Date of Hearing <span className="text-red-500">*</span>
+                      <input
+                        type="date"
+                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                        value={proceedingFormData.hearingDetails.dateOfHearing}
+                        onChange={(e) =>
+                          setProceedingFormData((prev) => ({
+                            ...prev,
+                            hearingDetails: { ...prev.hearingDetails, dateOfHearing: e.target.value },
+                          }))
+                        }
+                        required
+                      />
+                    </label>
+                    <label className="text-sm font-medium text-gray-700">
+                      Name of Judge
+                      <input
+                        type="text"
+                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                        value={proceedingFormData.hearingDetails.judgeName}
+                        onChange={(e) =>
+                          setProceedingFormData((prev) => ({
+                            ...prev,
+                            hearingDetails: { ...prev.hearingDetails, judgeName: e.target.value },
+                          }))
+                        }
+                        placeholder="Name of Judge"
+                      />
+                    </label>
+                    <label className="text-sm font-medium text-gray-700">
+                      Court Number
+                      <input
+                        type="text"
+                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                        value={proceedingFormData.hearingDetails.courtNumber}
+                        onChange={(e) =>
+                          setProceedingFormData((prev) => ({
+                            ...prev,
+                            hearingDetails: { ...prev.hearingDetails, courtNumber: e.target.value },
+                          }))
+                        }
+                        placeholder="Court Number"
+                      />
+                    </label>
+                    <label className="md:col-span-3 text-sm font-medium text-gray-700">
+                      <span className="text-red-500">*</span> Type of Proceeding
+                      <select
+                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                        value={proceedingFormData.type}
+                        onChange={(e) =>
+                          setProceedingFormData((prev) => ({ ...prev, type: e.target.value as ProceedingType }))
+                        }
+                        required
+                      >
+                        <option value="NOTICE_OF_MOTION">Notice of Motion</option>
+                        <option value="TO_FILE_REPLY">Reply Tracking</option>
+                        <option value="ARGUMENT">Argument</option>
+                        <option value="DECISION">Decision</option>
+                      </select>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Section 2: Type of Proceeding (simplified for now) */}
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-6 shadow-sm">
+                  <h3 className="mb-4 text-lg font-semibold text-gray-900">Type of Proceeding</h3>
+                  {proceedingFormData.type === 'NOTICE_OF_MOTION' && (
+                    <div className="space-y-4">
+                      <label className="block text-sm font-medium text-gray-700">
+                        <span className="text-red-500">*</span> How Court is attended
+                        <select
+                          className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                          value={proceedingFormData.noticeOfMotion.attendanceMode}
+                          onChange={(e) =>
+                            setProceedingFormData((prev) => ({
+                              ...prev,
+                              noticeOfMotion: {
+                                ...prev.noticeOfMotion,
+                                attendanceMode: e.target.value as CourtAttendanceMode,
+                              },
+                            }))
+                          }
+                          required
+                        >
+                          <option value="BY_FORMAT">By Format</option>
+                          <option value="BY_PERSON">By Person</option>
+                        </select>
+                      </label>
+                      {proceedingFormData.noticeOfMotion.attendanceMode === 'BY_FORMAT' && (
+                        <div className="grid gap-4 md:grid-cols-3">
+                          <label className="text-sm font-medium text-gray-700">
+                            Format Filled By - Name
+                            <input
+                              type="text"
+                              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                              value={proceedingFormData.noticeOfMotion.formatFilledBy.name}
+                              onChange={(e) =>
+                                setProceedingFormData((prev) => ({
+                                  ...prev,
+                                  noticeOfMotion: {
+                                    ...prev.noticeOfMotion,
+                                    formatFilledBy: {
+                                      ...prev.noticeOfMotion.formatFilledBy,
+                                      name: e.target.value,
+                                    },
+                                  },
+                                }))
+                              }
+                            />
+                          </label>
+                          <label className="text-sm font-medium text-gray-700">
+                            Rank
+                            <input
+                              type="text"
+                              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                              value={proceedingFormData.noticeOfMotion.formatFilledBy.rank}
+                              onChange={(e) =>
+                                setProceedingFormData((prev) => ({
+                                  ...prev,
+                                  noticeOfMotion: {
+                                    ...prev.noticeOfMotion,
+                                    formatFilledBy: {
+                                      ...prev.noticeOfMotion.formatFilledBy,
+                                      rank: e.target.value,
+                                    },
+                                  },
+                                }))
+                              }
+                            />
+                          </label>
+                          <label className="text-sm font-medium text-gray-700">
+                            Mobile
+                            <input
+                              type="text"
+                              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                              value={proceedingFormData.noticeOfMotion.formatFilledBy.mobile}
+                              onChange={(e) =>
+                                setProceedingFormData((prev) => ({
+                                  ...prev,
+                                  noticeOfMotion: {
+                                    ...prev.noticeOfMotion,
+                                    formatFilledBy: {
+                                      ...prev.noticeOfMotion.formatFilledBy,
+                                      mobile: e.target.value,
+                                    },
+                                  },
+                                }))
+                              }
+                            />
+                          </label>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {(proceedingFormData.type === 'TO_FILE_REPLY' || proceedingFormData.type === 'ARGUMENT') && (
+                    <p className="text-sm text-gray-500">Additional fields for this proceeding type will be added here.</p>
+                  )}
+                </div>
+
+                {/* Section 3: Decision Details */}
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-6 shadow-sm">
+                  <h3 className="mb-4 text-lg font-semibold text-gray-900">Decision Details</h3>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <label className="text-sm font-medium text-gray-700">
+                      Writ status
+                      <select
+                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                        value={proceedingFormData.decisionDetails.writStatus}
+                        onChange={(e) =>
+                          setProceedingFormData((prev) => ({
+                            ...prev,
+                            decisionDetails: {
+                              ...prev.decisionDetails,
+                              writStatus: e.target.value as WritStatus,
+                            },
+                          }))
+                        }
+                      >
+                        <option value="PENDING">Pending</option>
+                        <option value="ALLOWED">Allowed</option>
+                        <option value="DISMISSED">Dismissed</option>
+                        <option value="WITHDRAWN">Withdrawn</option>
+                      </select>
+                    </label>
+                    <label className="text-sm font-medium text-gray-700">
+                      Date of Decision
+                      <input
+                        type="date"
+                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                        value={proceedingFormData.decisionDetails.dateOfDecision}
+                        onChange={(e) =>
+                          setProceedingFormData((prev) => ({
+                            ...prev,
+                            decisionDetails: {
+                              ...prev.decisionDetails,
+                              dateOfDecision: e.target.value,
+                            },
+                          }))
+                        }
+                      />
+                    </label>
+                    <label className="md:col-span-2 text-sm font-medium text-gray-700">
+                      Decision by Court
+                      <input
+                        type="text"
+                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                        value={proceedingFormData.decisionDetails.decisionByCourt}
+                        onChange={(e) =>
+                          setProceedingFormData((prev) => ({
+                            ...prev,
+                            decisionDetails: {
+                              ...prev.decisionDetails,
+                              decisionByCourt: e.target.value,
+                            },
+                          }))
+                        }
+                        placeholder="Decision by Court"
+                      />
+                    </label>
+                    <label className="md:col-span-2 text-sm font-medium text-gray-700">
+                      Remarks
+                      <textarea
+                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                        rows={3}
+                        value={proceedingFormData.decisionDetails.remarks}
+                        onChange={(e) =>
+                          setProceedingFormData((prev) => ({
+                            ...prev,
+                            decisionDetails: {
+                              ...prev.decisionDetails,
+                              remarks: e.target.value,
+                            },
+                          }))
+                        }
+                        placeholder="Remarks"
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                {formError && (
+                  <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                    {formError}
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={handleBackToStep1}
+                    className="text-sm font-medium text-indigo-600 hover:underline"
+                  >
+                    BACK
+                  </button>
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={handleSaveDraft}
+                      disabled={formSubmitting}
+                      className="rounded-md border border-gray-300 px-6 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                    >
+                      {formSubmitting ? 'Saving...' : 'SAVE AND CLOSE'}
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={formSubmitting}
+                      className="rounded-md bg-indigo-600 px-6 py-2.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
+                    >
+                      {formSubmitting ? 'Submitting...' : 'FINAL SUBMIT'}
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </>
+          )}
         </section>
       )}
 
-      <section className="rounded-xl border bg-white p-6">
+      {!formOpen && (
+        <section className="rounded-xl border bg-white p-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h2 className="text-lg font-semibold text-gray-900">All FIRs</h2>
+            <h2 className="text-lg font-semibold text-gray-900">All Writs</h2>
             <p className="text-sm text-gray-500">
               {filteredFirs.length} record{filteredFirs.length === 1 ? '' : 's'} found
             </p>
@@ -325,7 +1302,7 @@ export default function FIRs() {
           <div className="flex flex-wrap gap-3">
             <input
               type="search"
-              placeholder="Search FIRs..."
+              placeholder="Search by WRIT #, petitioner, writ, branch..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-48 rounded-md border border-gray-300 px-3 py-2 text-sm"
@@ -344,7 +1321,7 @@ export default function FIRs() {
             </select>
             <input
               type="text"
-              placeholder="Branch filter"
+              placeholder="Filter by branch/unit"
               value={branchFilter}
               onChange={(e) => setBranchFilter(e.target.value)}
               className="w-40 rounded-md border border-gray-300 px-3 py-2 text-sm"
@@ -362,43 +1339,138 @@ export default function FIRs() {
           <table className="min-w-full text-sm">
             <thead className="bg-gray-50 text-left text-xs font-medium uppercase text-gray-600">
               <tr>
-                <th className="px-4 py-3">FIR Number</th>
-                <th className="px-4 py-3">Title</th>
+                <th className="px-4 py-3">Writ Number</th>
                 <th className="px-4 py-3">Petitioner</th>
+                <th className="px-4 py-3">Section/Act</th>
+                <th className="px-4 py-3">Investigating Officer</th>
                 <th className="px-4 py-3">Branch</th>
+                <th className="px-4 py-3">Respondents</th>
                 <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Filed On</th>
+                <th className="px-4 py-3">Date of FIR</th>
               </tr>
             </thead>
             <tbody className="divide-y text-sm text-gray-700">
               {loading && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-gray-500">
-                    Loading FIRs…
+                  <td colSpan={8} className="px-4 py-6 text-center text-gray-500">
+                    Loading writs…
                   </td>
                 </tr>
               )}
               {!loading && visibleFirs.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-gray-500">
-                    No FIRs match the selected filters.
+                  <td colSpan={8} className="px-4 py-6 text-center text-gray-500">
+                    No writs match the selected filters.
                   </td>
                 </tr>
               )}
-              {visibleFirs.map((fir) => (
-                <tr
-                  key={fir._id}
-                  className="cursor-pointer transition hover:bg-indigo-50"
-                  onClick={() => navigate(`/firs/${fir._id}`)}
-                >
-                  <td className="px-4 py-3 font-medium">{fir.firNumber}</td>
-                  <td className="px-4 py-3">{fir.title}</td>
-                  <td className="px-4 py-3">{fir.petitionerName}</td>
-                  <td className="px-4 py-3">{fir.branch}</td>
-                  <td className="px-4 py-3 capitalize">{formatStatusLabel(fir.status)}</td>
-                  <td className="px-4 py-3">{formatDate(fir.dateOfFiling)}</td>
+              {visibleFirs.map((fir) => {
+                const hasDraft = firsWithDrafts.has(fir._id)
+                return (
+                  <tr
+                    key={fir._id}
+                    className={`cursor-pointer transition ${hasDraft ? 'hover:bg-amber-50' : 'hover:bg-indigo-50'}`}
+                    onClick={() => {
+                      if (hasDraft) {
+                        handleResumeDraft(fir._id)
+                      } else {
+                        navigate(`/firs/${fir._id}`)
+                      }
+                    }}
+                  >
+                    <td className="px-4 py-3 font-medium">
+                      <div className="flex items-center gap-2">
+                        <span>{fir.firNumber}</span>
+                        {hasDraft && (
+                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                            Draft
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="font-medium text-gray-900">{fir.petitionerName || '—'}</div>
+                      {fir.petitionerFatherName && (
+                        <div className="text-xs text-gray-500">S/O {fir.petitionerFatherName}</div>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {fir.underSection && String(fir.underSection).trim() ? (
+                        <div className="font-medium text-gray-900">{fir.underSection}</div>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
+                      {fir.act && String(fir.act).trim() && (
+                        <div className="text-xs text-gray-500 mt-0.5">{fir.act}</div>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {fir.investigatingOfficers && fir.investigatingOfficers.length > 0 ? (
+                        <div>
+                          <div className="font-medium text-gray-900">
+                            {fir.investigatingOfficers[0].name || '—'}
+                          </div>
+                          {fir.investigatingOfficers[0].rank && (
+                            <div className="text-xs text-gray-500">{fir.investigatingOfficers[0].rank}</div>
+                          )}
+                          {fir.investigatingOfficers.length > 1 && (
+                            <div className="text-xs text-indigo-600">+{fir.investigatingOfficers.length - 1} more</div>
+                          )}
+                        </div>
+                      ) : fir.investigatingOfficer ? (
+                        <div className="text-gray-900">{fir.investigatingOfficer}</div>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">{fir.branchName || fir.branch || '—'}</td>
+                    <td className="px-4 py-3">
+                      {fir.respondents && Array.isArray(fir.respondents) && fir.respondents.length > 0 ? (
+                        <div>
+                          {fir.respondents.filter(r => r != null).slice(0, 2).map((respondent, idx) => {
+                            let name = '—'
+                            let designation: string | null = null
+                            
+                            if (typeof respondent === 'string') {
+                              name = respondent.trim() || '—'
+                            } else if (respondent && typeof respondent === 'object') {
+                              const respObj = respondent as RespondentDetail
+                              name = respObj.name ? String(respObj.name).trim() : '—'
+                              designation = respObj.designation ? String(respObj.designation).trim() : null
+                            }
+                            
+                            return (
+                              <div key={idx} className={idx > 0 ? 'mt-1' : ''}>
+                                <div className="font-medium text-gray-900">{name}</div>
+                                {designation && (
+                                  <div className="text-xs text-gray-500">{designation}</div>
+                                )}
+                              </div>
+                            )
+                          })}
+                          {fir.respondents.filter(r => r != null).length > 2 && (
+                            <div className="mt-1 text-xs text-indigo-600">+{fir.respondents.filter(r => r != null).length - 2} more</div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                        fir.status === 'CLOSED' || fir.status === 'DISMISSED'
+                          ? 'bg-green-100 text-green-800'
+                          : fir.status === 'PENDING' || fir.status === 'ONGOING'
+                          ? 'bg-amber-100 text-amber-800'
+                          : 'bg-gray-100 text-gray-800'
+                      }`}>
+                        {formatStatusLabel(fir.status)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">{formatDate(fir.dateOfFIR || fir.dateOfFiling)}</td>
                 </tr>
-              ))}
+                )
+              })}
             </tbody>
           </table>
         </div>
@@ -415,6 +1487,7 @@ export default function FIRs() {
           </div>
         )}
       </section>
+      )}
     </div>
   )
 }
@@ -427,7 +1500,7 @@ function TextField({
   placeholder,
 }: {
   label: string
-  value: string
+  value: string | number
   onChange: (value: string) => void
   required?: boolean
   placeholder?: string
@@ -438,7 +1511,7 @@ function TextField({
       <input
         type="text"
         className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-        value={value}
+        value={value ?? ''}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         required={required}

@@ -36,10 +36,10 @@ export default function Login() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-100 px-4">
       <div className="w-full max-w-md rounded-2xl border bg-white p-8 shadow-sm">
-        <div className="mb-2 text-center text-3xl font-extrabold text-indigo-600">AppealTrax</div>
+        <div className="mb-2 text-center text-3xl font-extrabold text-indigo-600">WritTrax</div>
         <div className="mb-4 text-center">
           <h1 className="text-2xl font-semibold text-gray-900">Welcome back</h1>
-          <p className="text-sm text-gray-500">Sign in with your AppealTrax credentials.</p>
+          <p className="text-sm text-gray-500">Sign in with your WritTrax credentials.</p>
         </div>
         {signupSuccess && (
           <div className="mb-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">

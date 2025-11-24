@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { fetchFIRCityGraph, fetchFIRDashboard, fetchFIRs } from '../lib/api'
-import { useAuthStore } from '../store'
+import { useAuthStore, useApiCacheStore } from '../store'
 import type { FIR, FIRCityBreakdown, FIRDashboardMetrics } from '../types'
 
 export default function Dashboard() {
@@ -13,11 +13,33 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  const handleCreateFIR = () => {
+    navigate('/firs?create=true')
+  }
+
   useEffect(() => {
     let active = true
 
     async function loadDashboard() {
       try {
+        const cache = useApiCacheStore.getState()
+        // Check cache first for instant loading
+        const cachedFirs = cache.getCachedFirs()
+        const cachedMetrics = cache.getCachedDashboard()
+        const cachedCityGraph = cache.getCachedCityGraph()
+
+        if (cachedFirs) {
+          setFirs(cachedFirs)
+          setLoading(false) // Show cached data immediately
+        }
+        if (cachedMetrics) {
+          setMetrics(cachedMetrics)
+        }
+        if (cachedCityGraph) {
+          setCityGraph(cachedCityGraph)
+        }
+
+        // Fetch fresh data in the background
         setLoading(true)
         const [firData, dashboardData, cityData] = await Promise.all([
           fetchFIRs(),
@@ -48,7 +70,7 @@ export default function Dashboard() {
     return () => {
       active = false
     }
-  }, [])
+  }, [user?.email])
 
   const totalCases = metrics?.totalCases ?? 0
   const pendingCases = metrics?.ongoingCases ?? 0
@@ -88,7 +110,8 @@ export default function Dashboard() {
     return [...firs]
       .sort(
         (a, b) =>
-          new Date(b.dateOfFiling).getTime() - new Date(a.dateOfFiling).getTime()
+          new Date(b.dateOfFIR || b.dateOfFiling || 0).getTime() -
+          new Date(a.dateOfFIR || a.dateOfFiling || 0).getTime()
       )
       .slice(0, 5)
   }, [firs])
@@ -110,8 +133,8 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">FIR Operations Overview</h1>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <h1 className="text-2xl font-semibold">Writ Overview</h1>
       </div>
 
       {error && (
@@ -120,10 +143,28 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* Quick Action Card */}
+      <div className="rounded-xl border-2 border-indigo-200 bg-gradient-to-r from-indigo-50 to-purple-50 p-6 shadow-sm">
+        <div className="flex flex-col items-start gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="flex-1">
+            <h2 className="text-lg font-semibold text-gray-900">Ready to file a new writ application?</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              Record a new FIR and start tracking its proceedings from the dashboard.
+            </p>
+          </div>
+          <button
+            onClick={handleCreateFIR}
+            className="whitespace-nowrap rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-700 hover:shadow-md"
+          >
+            + New Writ Application
+          </button>
+        </div>
+      </div>
+
       <div className="grid gap-4 md:grid-cols-3">
-        <MetricCard label="Total Cases" value={totalCases} loading={loading} />
-        <MetricCard label="Pending Cases" value={pendingCases} loading={loading} />
-        <MetricCard label="Closed Cases" value={closedCases} loading={loading} />
+        <MetricCard label="Filed Affidavit" value={totalCases} loading={loading} />
+        <MetricCard label="Pending Affidavit" value={pendingCases} loading={loading} />
+        <MetricCard label="Overdue Affidavit" value={closedCases} loading={loading} />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -162,7 +203,7 @@ export default function Dashboard() {
         </div>
 
         <div className="rounded-xl border bg-white p-4">
-          <h2 className="mb-4 text-lg font-semibold">FIR Status Graph</h2>
+          <h2 className="mb-4 text-lg font-semibold">Affidavit Status Graph</h2>
           {cityBars.length > 0 ? (
             <div className="space-y-4">
               {cityBars.map((item) => (
@@ -201,12 +242,12 @@ export default function Dashboard() {
       </div>
 
       <div className="overflow-hidden rounded-xl border bg-white">
-        <h2 className="border-b px-4 py-3 text-lg font-semibold">Recent FIRs</h2>
+        <h2 className="border-b px-4 py-3 text-lg font-semibold">Recent Writ Petitions</h2>
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead className="bg-gray-50 text-left text-xs font-medium uppercase text-gray-600">
               <tr>
-                <th className="px-4 py-3">FIR Number</th>
+                <th className="px-4 py-3">Writ Number</th>
                 <th className="px-4 py-3">Petitioner</th>
                 <th className="px-4 py-3">Branch</th>
                 <th className="px-4 py-3">Status</th>
@@ -223,9 +264,9 @@ export default function Dashboard() {
                 >
                   <td className="px-4 py-3 font-medium">{row.firNumber}</td>
                   <td className="px-4 py-3">{row.petitionerName}</td>
-                  <td className="px-4 py-3">{row.branch}</td>
+                  <td className="px-4 py-3">{row.branchName || row.branch || '—'}</td>
                   <td className="px-4 py-3 capitalize">{formatStatusLabel(row.status)}</td>
-                  <td className="px-4 py-3">{formatDate(row.dateOfFiling)}</td>
+                  <td className="px-4 py-3">{formatDate(row.dateOfFIR || row.dateOfFiling)}</td>
                   <td className="px-4 py-3 text-right">
                     <Link
                       to={`/firs/${row._id}`}

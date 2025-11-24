@@ -6,7 +6,7 @@ import type {
   Proceeding,
   CreateProceedingInput,
 } from '../types'
-import { useAuthStore } from '../store'
+import { useAuthStore, useApiCacheStore } from '../store'
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') || 'http://localhost:3000'
@@ -159,45 +159,79 @@ export async function loginUser(payload: AuthPayload) {
 }
 
 export async function fetchFIRs() {
-  return request<FIR[]>('/v1/firs')
+  const data = await request<FIR[]>('/v1/firs')
+  // Save to cache
+  useApiCacheStore.getState().setFirs(data)
+  return data
 }
 
 export async function fetchFIRDashboard() {
-  return request<FIRDashboardMetrics>('/v1/firs/dash')
+  const data = await request<FIRDashboardMetrics>('/v1/firs/dash')
+  // Save to cache
+  useApiCacheStore.getState().setDashboard(data)
+  return data
 }
 
 export async function fetchFIRCityGraph() {
-  return request<FIRCityBreakdown[]>('/v1/firs/graph')
+  const data = await request<FIRCityBreakdown[]>('/v1/firs/graph')
+  // Save to cache
+  useApiCacheStore.getState().setCityGraph(data)
+  return data
 }
 
 export async function fetchFIRDetail(id: string) {
-  return request<FIR>(`/v1/firs/${id}`)
+  const data = await request<FIR>(`/v1/firs/${id}`)
+  // Save to cache
+  useApiCacheStore.getState().setFIRDetail(id, data)
+  return data
 }
 
 export async function searchFIRs(query: string) {
+  // Search doesn't cache - it's dynamic
   return request<FIR[]>(`/v1/firs/search?q=${encodeURIComponent(query)}`)
 }
 
 export async function createFIR(payload: CreateFIRInput) {
-  return request<FIR>('/v1/firs', {
+  const data = await request<FIR>('/v1/firs', {
     method: 'POST',
     body: JSON.stringify(payload),
   })
+  // Invalidate FIRs cache since we added a new one
+  useApiCacheStore.getState().invalidateAllFirs()
+  return data
 }
 
 // Proceeding endpoints
 export async function fetchAllProceedings() {
-  return request<Proceeding[]>('/v1/proceedings')
+  const data = await request<Proceeding[]>('/v1/proceedings')
+  // Save to cache
+  useApiCacheStore.getState().setProceedings(data)
+  return data
 }
 
 export async function fetchProceedingsByFIR(firId: string) {
-  return request<Proceeding[]>(`/v1/proceedings/fir/${firId}`)
+  const data = await request<Proceeding[]>(`/v1/proceedings/fir/${firId}`)
+  // Save to cache
+  useApiCacheStore.getState().setProceedingsByFIR(firId, data)
+  return data
+}
+
+export async function fetchDraftProceedingByFIR(firId: string) {
+  const data = await request<Proceeding | null>(`/v1/proceedings/fir/${firId}/draft`)
+  return data
 }
 
 export async function createProceeding(payload: CreateProceedingInput) {
-  return request<Proceeding>('/v1/proceedings', {
+  const data = await request<Proceeding>('/v1/proceedings', {
     method: 'POST',
     body: JSON.stringify(payload),
   })
+  // Invalidate proceedings cache since we added a new one
+  const cache = useApiCacheStore.getState()
+  cache.invalidateProceedings() // Clear all proceedings cache
+  if (payload.fir) {
+    cache.invalidateFIR(payload.fir) // Invalidate this FIR's proceedings
+  }
+  return data
 }
 

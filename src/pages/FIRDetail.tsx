@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { createProceeding, fetchFIRDetail, fetchProceedingsByFIR } from '../lib/api'
-import { useAuthStore } from '../store'
+import { useAuthStore, useApiCacheStore } from '../store'
 import type { FIR, Proceeding, ProceedingType, CourtAttendanceMode, WritStatus, CreateProceedingInput } from '../types'
 
 export default function FIRDetail() {
@@ -64,6 +64,21 @@ export default function FIRDetail() {
         return
       }
       try {
+        const cache = useApiCacheStore.getState()
+        
+        // Check cache first for instant loading
+        const cachedFIR = cache.getCachedFIRDetail(firId)
+        const cachedProceedings = cache.getCachedProceedingsByFIR(firId)
+
+        if (cachedFIR) {
+          setFir(cachedFIR)
+          setLoading(false) // Show cached data immediately
+        }
+        if (cachedProceedings) {
+          setLocalProceedings(cachedProceedings)
+        }
+
+        // Fetch fresh data in the background
         setLoading(true)
         const [data, proceedingsData] = await Promise.all([
           fetchFIRDetail(firId),
@@ -215,6 +230,11 @@ export default function FIRDetail() {
     )
   }
 
+  const respondentEntries =
+    (fir.respondents || []).map((res) =>
+      typeof res === 'string' ? { name: res, designation: '—' } : res
+    )
+
   return (
     <div className="space-y-8">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -222,9 +242,12 @@ export default function FIRDetail() {
           <Link to="/firs" className="text-sm font-medium text-indigo-600 hover:underline">
             ← Back to FIRs
           </Link>
-          <h1 className="mt-2 text-3xl font-semibold text-gray-900">{fir.title}</h1>
+          <h1 className="mt-2 text-3xl font-semibold text-gray-900">
+            {formatWritType(fir.writType)} Writ · WRIT #{fir.firNumber}
+          </h1>
           <p className="text-sm text-gray-500">
-            FIR #{fir.firNumber} · Filed on {formatDate(fir.dateOfFiling)} · {fir.branch}
+            Filed on {formatDate(fir.dateOfFIR || fir.dateOfFiling)} ·{' '}
+            {fir.branchName || fir.branch} · Police Station {fir.policeStation}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
@@ -239,22 +262,90 @@ export default function FIRDetail() {
         </div>
       </div>
 
-      <section className="grid gap-4 lg:grid-cols-3">
-        <ProfileCard title="Investigating Officer">
-          <ProfileRow label="Officer">{fir.investigatingOfficer}</ProfileRow>
-          <ProfileRow label="Rank">{fir.investigatingOfficerRank}</ProfileRow>
-          <ProfileRow label="Posting">{fir.investigatingOfficerPosting}</ProfileRow>
-          <ProfileRow label="Contact">{fir.investigatingOfficerContact}</ProfileRow>
+      {!showForm && (
+        <>
+          <section className="grid gap-4 lg:grid-cols-3">
+            <ProfileCard title="Investigating Officers">
+          {(fir.investigatingOfficers && fir.investigatingOfficers.length > 0) ? (
+            <div className="space-y-4">
+              {fir.investigatingOfficers.map((io, idx) => (
+                <div key={idx} className="rounded-md border border-gray-200 bg-gray-50 p-3">
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    Officer {idx + 1}
+                  </div>
+                  <ProfileRow label="Name">{io.name || '—'}</ProfileRow>
+                  <ProfileRow label="Rank">{io.rank || '—'}</ProfileRow>
+                  <ProfileRow label="Posting">{io.posting || '—'}</ProfileRow>
+                  <ProfileRow label="Contact">{io.contact || '—'}</ProfileRow>
+                  {(io.from || io.to) && (
+                    <ProfileRow label="Tenure">
+                      <span>
+                        {formatDate(io.from || undefined)} – {formatDate(io.to || undefined)}
+                      </span>
+                    </ProfileRow>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            // Fallback to legacy fields for backward compatibility
+            <>
+              <ProfileRow label="Officer">{fir.investigatingOfficer || '—'}</ProfileRow>
+              <ProfileRow label="Rank">{fir.investigatingOfficerRank || '—'}</ProfileRow>
+              <ProfileRow label="Posting">{fir.investigatingOfficerPosting || '—'}</ProfileRow>
+              <ProfileRow label="Contact">{fir.investigatingOfficerContact || '—'}</ProfileRow>
+              <ProfileRow label="Tenure">
+                {fir.investigatingOfficerFrom || fir.investigatingOfficerTo ? (
+                  <span>
+                    {formatDate(fir.investigatingOfficerFrom || undefined)} – {formatDate(fir.investigatingOfficerTo || undefined)}
+                  </span>
+                ) : (
+                  '—'
+                )}
+              </ProfileRow>
+            </>
+          )}
         </ProfileCard>
         <ProfileCard title="Petitioner">
           <ProfileRow label="Name">{fir.petitionerName}</ProfileRow>
           <ProfileRow label="Father's Name">{fir.petitionerFatherName}</ProfileRow>
           <ProfileRow label="Address">{fir.petitionerAddress}</ProfileRow>
+          <ProfileRow label="Prayer">{fir.petitionerPrayer}</ProfileRow>
         </ProfileCard>
         <ProfileCard title="Case Snapshot">
-          <ProfileRow label="Branch">{fir.branch}</ProfileRow>
-          <ProfileRow label="Sections">{fir.sections.join(', ') || '—'}</ProfileRow>
-          <ProfileRow label="Respondents">{fir.respondents.join(', ') || '—'}</ProfileRow>
+          <ProfileRow label="Branch">{fir.branchName || fir.branch}</ProfileRow>
+          <ProfileRow label="Police Station">{fir.policeStation}</ProfileRow>
+          <ProfileRow label="Writ Info">
+            <div>
+              <div className="font-medium text-gray-900">{formatWritType(fir.writType)}</div>
+              <div className="text-xs text-gray-500">
+                {fir.writNumber ? `#${fir.writNumber}` : '—'}
+                {fir.writYear ? ` · ${fir.writYear}` : ''}
+                {fir.writType === 'BAIL' && fir.writSubType
+                  ? ` · ${formatStatusLabel(fir.writSubType)}`
+                  : ''}
+                {fir.writType === 'ANY_OTHER' && fir.writTypeOther ? ` · ${fir.writTypeOther}` : ''}
+              </div>
+            </div>
+          </ProfileRow>
+          <ProfileRow label="Under Section">
+            {fir.underSection || (fir.sections || []).join(', ') || '—'}
+          </ProfileRow>
+          <ProfileRow label="Act">{fir.act}</ProfileRow>
+          <ProfileRow label="Respondents">
+            {respondentEntries.length ? (
+              <ul className="list-inside list-disc space-y-1 text-sm">
+                {respondentEntries.map((res, idx) => (
+                  <li key={`${res.name}-${idx}`}>
+                    <span className="font-medium text-gray-900">{res.name}</span>
+                    <span className="text-gray-500"> · {res.designation || '—'}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              '—'
+            )}
+          </ProfileRow>
         </ProfileCard>
       </section>
 
@@ -273,8 +364,58 @@ export default function FIRDetail() {
           </div>
         </div>
 
-        {showForm && (
-          <div className="rounded-xl border border-indigo-200 bg-indigo-50/30 p-6">
+        {sortedProceedings.length === 0 && (
+          <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-6 text-center text-sm text-gray-600">
+            No proceedings have been recorded for this FIR yet.
+          </div>
+        )}
+
+        {sortedProceedings.length > 0 && (
+          <ol className="space-y-4">
+            {sortedProceedings.map((item, index) => (
+              <Fragment key={`${item._id}-${index}`}>
+                <li className="flex gap-4">
+                  <div className="flex flex-col items-center">
+                    <div className="rounded-full border-2 border-indigo-500 bg-white px-3 py-1 text-xs font-semibold text-indigo-600">
+                      {item.sequence ?? index + 1}
+                    </div>
+                    {index !== sortedProceedings.length - 1 && (
+                      <div className="h-full w-px bg-gray-200" />
+                    )}
+                  </div>
+                  <div className="flex-1 rounded-lg border bg-white p-4 shadow-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="text-sm font-semibold text-gray-800">
+                        {PROCEEDING_TYPE_LABEL[item.type] || item.type}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {formatDate(item.hearingDetails?.dateOfHearing || item.createdAt)}
+                      </div>
+                    </div>
+                    {item.summary && (
+                      <p className="mt-1 text-sm font-medium text-gray-900">{item.summary}</p>
+                    )}
+                    {item.details && <p className="mt-1 text-sm text-gray-600">{item.details}</p>}
+                    <div className="mt-3 flex flex-wrap gap-4 text-xs text-gray-500">
+                      {item.hearingDetails?.judgeName && (
+                        <span>Judge: {item.hearingDetails.judgeName}</span>
+                      )}
+                      {item.hearingDetails?.courtNumber && (
+                        <span>Courtroom: {item.hearingDetails.courtNumber}</span>
+                      )}
+                    </div>
+                  </div>
+                </li>
+              </Fragment>
+            ))}
+          </ol>
+        )}
+      </section>
+        </>
+      )}
+
+      {showForm && (
+        <section className="rounded-xl border border-indigo-200 bg-indigo-50/30 p-6">
             {error && (
               <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                 {error}
@@ -286,7 +427,7 @@ export default function FIRDetail() {
                 <h3 className="mb-2 text-sm font-semibold text-gray-900">Selected FIR</h3>
                 <div className="rounded-md bg-green-100 border border-green-300 p-3">
                   <div className="text-sm font-medium text-green-800">
-                    {fir?.firNumber} - {fir?.petitionerName} ({fir?.branch})
+                    {fir?.firNumber} - {fir?.petitionerName} ({fir?.branchName || fir?.branch})
                   </div>
                   <div className="mt-1 text-xs text-green-700">
                     This proceeding will be associated with the current FIR
@@ -979,56 +1120,8 @@ export default function FIRDetail() {
                 </button>
               </div>
             </form>
-          </div>
-        )}
-
-        {sortedProceedings.length === 0 && (
-          <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-6 text-center text-sm text-gray-600">
-            No proceedings have been recorded for this FIR yet.
-          </div>
-        )}
-
-        {sortedProceedings.length > 0 && (
-          <ol className="space-y-4">
-            {sortedProceedings.map((item, index) => (
-              <Fragment key={`${item._id}-${index}`}>
-                <li className="flex gap-4">
-                  <div className="flex flex-col items-center">
-                    <div className="rounded-full border-2 border-indigo-500 bg-white px-3 py-1 text-xs font-semibold text-indigo-600">
-                      {item.sequence ?? index + 1}
-                    </div>
-                    {index !== sortedProceedings.length - 1 && (
-                      <div className="h-full w-px bg-gray-200" />
-                    )}
-                  </div>
-                  <div className="flex-1 rounded-lg border bg-white p-4 shadow-sm">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="text-sm font-semibold text-gray-800">
-                        {PROCEEDING_TYPE_LABEL[item.type] || item.type}
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        {formatDate(item.hearingDetails?.dateOfHearing || item.createdAt)}
-                      </div>
-                    </div>
-                    {item.summary && (
-                      <p className="mt-1 text-sm font-medium text-gray-900">{item.summary}</p>
-                    )}
-                    {item.details && <p className="mt-1 text-sm text-gray-600">{item.details}</p>}
-                    <div className="mt-3 flex flex-wrap gap-4 text-xs text-gray-500">
-                      {item.hearingDetails?.judgeName && (
-                        <span>Judge: {item.hearingDetails.judgeName}</span>
-                      )}
-                      {item.hearingDetails?.courtNumber && (
-                        <span>Courtroom: {item.hearingDetails.courtNumber}</span>
-                      )}
-                    </div>
-                  </div>
-                </li>
-              </Fragment>
-            ))}
-          </ol>
-        )}
-      </section>
+        </section>
+      )}
     </div>
   )
 }
@@ -1096,7 +1189,20 @@ function formatStatusLabel(status: string) {
     .join(' ')
 }
 
-function formatDate(value?: string) {
+function formatWritType(type?: FIR['writType']) {
+  if (!type) return '—'
+  const map: Record<string, string> = {
+    BAIL: 'Bail',
+    QUASHING: 'Quashing',
+    DIRECTION: 'Direction',
+    SUSPENSION_OF_SENTENCE: 'Suspension of Sentence',
+    PAYROLL: 'Payroll',
+    ANY_OTHER: 'Other',
+  }
+  return map[type] || formatStatusLabel(type)
+}
+
+function formatDate(value?: string | null) {
   if (!value) return '—'
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) {
