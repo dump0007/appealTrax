@@ -38,7 +38,7 @@ function handleAuthError() {
   // Redirect to login page
   // Use window.location to ensure full page reload and clear any cached state
   const currentPath = window.location.pathname
-  if (currentPath !== '/login' && currentPath !== '/signup') {
+  if (currentPath !== '/login') { // Removed '/signup' - signup disabled
     window.location.href = '/login'
   }
 }
@@ -132,6 +132,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return data as T
 }
 
+/* signupUser function commented out - signup functionality disabled
 export async function signupUser(payload: AuthPayload) {
   const data = await request<AuthResponse>('/auth/signup', {
     method: 'POST',
@@ -144,6 +145,7 @@ export async function signupUser(payload: AuthPayload) {
 
   return data
 }
+*/
 
 export async function loginUser(payload: AuthPayload) {
   const data = await request<AuthResponse>('/auth/login', {

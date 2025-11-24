@@ -1,12 +1,13 @@
 import type { FormEvent } from 'react'
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { signupUser } from '../lib/api'
-import { useAuthStore } from '../store'
+import { Link } from 'react-router-dom'
+// import { useNavigate } from 'react-router-dom' // Commented out - signup disabled
+// import { signupUser } from '../lib/api' // Commented out - signup functionality disabled
+// import { useAuthStore } from '../store' // Commented out - signup disabled
 
 export default function Signup() {
-  const navigate = useNavigate()
-  const logout = useAuthStore((s) => s.logout)
+  // const navigate = useNavigate() // Commented out - signup disabled
+  // const logout = useAuthStore((s) => s.logout) // Commented out - signup disabled
   const [form, setForm] = useState({
     email: '',
     password: '',
@@ -28,10 +29,12 @@ export default function Signup() {
 
     setLoading(true)
     try {
-      await signupUser({ email: form.email, password: form.password })
+      // Signup functionality disabled - commented out
+      // await signupUser({ email: form.email, password: form.password })
       // Ensure store is cleared before redirecting
-      logout()
-      navigate('/login?signup=1')
+      // logout()
+      // navigate('/login?signup=1')
+      setError('Signup is currently disabled. Please contact administrator.')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to create account')
     } finally {

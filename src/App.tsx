@@ -2,7 +2,7 @@ import { Route, Routes } from 'react-router-dom'
 import ProtectedRoute from './routes/ProtectedRoute'
 import AppLayout from './layouts/AppLayout'
 import Login from './pages/Login'
-import Signup from './pages/Signup'
+// import Signup from './pages/Signup' // Commented out - signup functionality disabled
 import Dashboard from './pages/Dashboard'
 import FIRs from './pages/FIRs'
 import FIRDetail from './pages/FIRDetail'
@@ -13,7 +13,9 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      {/* Signup route commented out - signup functionality disabled
       <Route path="/signup" element={<Signup />} />
+      */}
       <Route
         path="/"
         element={

@@ -1,13 +1,15 @@
 import type { FormEvent } from 'react'
 import { useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
+// import { useSearchParams } from 'react-router-dom' // Commented out - signup disabled, no need for signup success param
+// import { Link } from 'react-router-dom' // Commented out - signup link removed
 import { loginUser } from '../lib/api'
 import { useAuthStore } from '../store'
 
 export default function Login() {
   const navigate = useNavigate()
   const setAuth = useAuthStore((s) => s.setAuth)
-  const [searchParams] = useSearchParams()
+  // const [searchParams] = useSearchParams() // Commented out - signup disabled, no need for signup success param
   const [form, setForm] = useState({
     email: '',
     password: '',
@@ -16,7 +18,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
 
-  const signupSuccess = searchParams.get('signup') === '1'
+  // const signupSuccess = searchParams.get('signup') === '1' // Commented out - signup disabled
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
@@ -41,11 +43,13 @@ export default function Login() {
           <h1 className="text-2xl font-semibold text-gray-900">Welcome back</h1>
           <p className="text-sm text-gray-500">Sign in with your WritTrax credentials.</p>
         </div>
+        {/* Signup success message commented out - signup disabled
         {signupSuccess && (
           <div className="mb-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
             You have signed up successfully. Please sign in to proceed to your dashboard.
           </div>
         )}
+        */}
         <form className="space-y-4" onSubmit={onSubmit}>
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">Email</label>
@@ -101,12 +105,14 @@ export default function Login() {
             {loading ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
+        {/* Signup link commented out - signup functionality disabled
         <p className="mt-6 text-center text-sm text-gray-600">
           Need an account?{' '}
           <Link to="/signup" className="font-medium text-indigo-600 hover:underline">
             Create one
           </Link>
         </p>
+        */}
       </div>
     </div>
   )
