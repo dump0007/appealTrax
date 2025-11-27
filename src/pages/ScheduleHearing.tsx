@@ -26,7 +26,7 @@ export default function ScheduleHearing() {
     <div className="mx-auto max-w-2xl rounded-xl border bg-white p-6">
       <h1 className="mb-4 text-2xl font-semibold">Schedule Hearing</h1>
       <form className="grid gap-4 sm:grid-cols-2" onSubmit={onSubmit}>
-        <Field label="Date">
+        <Field label="Date" required>
           <input type="date" className="input" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} required />
         </Field>
         <Field label="Judge">
@@ -49,10 +49,13 @@ export default function ScheduleHearing() {
   )
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children, required }: { label: string; children: React.ReactNode; required?: boolean }) {
   return (
     <div>
-      <label className="mb-1 block text-sm font-medium">{label}</label>
+      <label className="mb-1 block text-sm font-medium">
+        {label}
+        {required && <span className="text-red-500 ml-1">*</span>}
+      </label>
       {children}
     </div>
   )

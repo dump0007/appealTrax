@@ -223,17 +223,74 @@ export async function fetchDraftProceedingByFIR(firId: string) {
   return data
 }
 
-export async function createProceeding(payload: CreateProceedingInput) {
-  const data = await request<Proceeding>('/v1/proceedings', {
+export async function createProceeding(payload: CreateProceedingInput, file?: File) {
+  const token = getAuthToken()
+  if (!token) {
+    throw new Error('Authentication required')
+  }
+
+  // Create FormData if file is present, otherwise use JSON
+  const formData = new FormData()
+  
+  // Add all payload fields to FormData
+  formData.append('fir', payload.fir)
+  formData.append('type', payload.type)
+  if (payload.summary) formData.append('summary', payload.summary)
+  if (payload.details) formData.append('details', payload.details)
+  formData.append('hearingDetails', JSON.stringify(payload.hearingDetails))
+  
+  if (payload.noticeOfMotion) {
+    formData.append('noticeOfMotion', JSON.stringify(payload.noticeOfMotion))
+  }
+  if (payload.replyTracking) {
+    formData.append('replyTracking', JSON.stringify(payload.replyTracking))
+  }
+  if (payload.argumentDetails) {
+    formData.append('argumentDetails', JSON.stringify(payload.argumentDetails))
+  }
+  if (payload.decisionDetails) {
+    formData.append('decisionDetails', JSON.stringify(payload.decisionDetails))
+  }
+  if (payload.draft !== undefined) {
+    formData.append('draft', String(payload.draft))
+  }
+  
+  // Add file if present
+  if (file) {
+    formData.append('orderOfProceeding', file)
+  }
+
+  const response = await fetch(`${API_BASE_URL}/v1/proceedings`, {
     method: 'POST',
-    body: JSON.stringify(payload),
+    headers: {
+      'x-access-token': token,
+      // Don't set Content-Type - browser will set it with boundary for FormData
+    },
+    body: formData,
   })
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}))
+    const message = errorData.message || `Request failed with status ${response.status}`
+    
+    // Handle auth errors
+    if (response.status === 401 || response.status === 403) {
+      handleAuthError()
+      throw new Error('Authentication required. Please login again.')
+    }
+    
+    throw new Error(message)
+  }
+
+  const data = await response.json()
+  
   // Invalidate proceedings cache since we added a new one
   const cache = useApiCacheStore.getState()
   cache.invalidateProceedings() // Clear all proceedings cache
   if (payload.fir) {
     cache.invalidateFIR(payload.fir) // Invalidate this FIR's proceedings
   }
-  return data
+  
+  return data as Proceeding
 }
 

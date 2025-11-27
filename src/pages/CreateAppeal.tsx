@@ -28,22 +28,22 @@ export default function CreateAppeal() {
     <div className="mx-auto max-w-2xl rounded-xl border bg-white p-6">
       <h1 className="mb-4 text-2xl font-semibold">Create Appeal</h1>
       <form className="grid gap-4 sm:grid-cols-2" onSubmit={onSubmit}>
-        <Field label="Title">
+        <Field label="Title" required>
           <input className="input" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required />
         </Field>
-        <Field label="Case Number">
+        <Field label="Case Number" required>
           <input className="input" value={form.caseNumber} onChange={(e) => setForm({ ...form, caseNumber: e.target.value })} required />
         </Field>
-        <Field label="Appellant">
+        <Field label="Appellant" required>
           <input className="input" value={form.appellant} onChange={(e) => setForm({ ...form, appellant: e.target.value })} required />
         </Field>
-        <Field label="Respondent">
+        <Field label="Respondent" required>
           <input className="input" value={form.respondent} onChange={(e) => setForm({ ...form, respondent: e.target.value })} required />
         </Field>
-        <Field label="Court">
+        <Field label="Court" required>
           <input className="input" value={form.court} onChange={(e) => setForm({ ...form, court: e.target.value })} required />
         </Field>
-        <Field label="Filed On">
+        <Field label="Filed On" required>
           <input type="date" className="input" value={form.filedOn} onChange={(e) => setForm({ ...form, filedOn: e.target.value })} required />
         </Field>
         <div className="sm:col-span-2">
@@ -59,10 +59,13 @@ export default function CreateAppeal() {
   )
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children, required }: { label: string; children: React.ReactNode; required?: boolean }) {
   return (
     <div>
-      <label className="mb-1 block text-sm font-medium">{label}</label>
+      <label className="mb-1 block text-sm font-medium">
+        {label}
+        {required && <span className="text-red-500 ml-1">*</span>}
+      </label>
       {children}
       <style>{`.input{width:100%;border-radius:.375rem;border:1px solid #e5e7eb;padding:.5rem .75rem;outline:0} .input:focus{box-shadow:0 0 0 2px rgba(79,70,229,.5)}`}</style>
     </div>

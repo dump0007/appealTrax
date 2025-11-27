@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { createProceeding, fetchFIRDetail, fetchProceedingsByFIR } from '../lib/api'
 import { useAuthStore, useApiCacheStore } from '../store'
-import type { FIR, Proceeding, ProceedingType, CourtAttendanceMode, WritStatus, CreateProceedingInput } from '../types'
+import type { FIR, Proceeding, ProceedingType, CourtAttendanceMode, WritStatus, CreateProceedingInput, NoticeOfMotionDetails } from '../types'
 
 export default function FIRDetail() {
   const { firId } = useParams<{ firId: string }>()
@@ -24,7 +24,7 @@ export default function FIRDetail() {
       judgeName: '',
       courtNumber: '',
     },
-    noticeOfMotion: {
+    noticeOfMotion: [{
       attendanceMode: 'BY_FORMAT' as CourtAttendanceMode,
       formatSubmitted: false,
       formatFilledBy: { name: '', rank: '', mobile: '' },
@@ -38,7 +38,7 @@ export default function FIRDetail() {
       advocateGeneralName: '',
       investigatingOfficerName: '',
       replyScrutinizedByHC: false,
-    },
+    }] as NoticeOfMotionDetails[],
     replyTracking: {
       proceedingInCourt: '',
       orderInShort: '',
@@ -55,6 +55,7 @@ export default function FIRDetail() {
       dateOfDecision: '',
     },
   })
+  const [orderOfProceedingFile, setOrderOfProceedingFile] = useState<File | null>(null)
 
   useEffect(() => {
     async function load() {
@@ -113,6 +114,59 @@ export default function FIRDetail() {
     })
   }, [localProceedings])
 
+  function addNoticeOfMotionEntry() {
+    setFormData((prev) => ({
+      ...prev,
+      noticeOfMotion: [
+        ...prev.noticeOfMotion,
+        {
+          attendanceMode: 'BY_FORMAT' as CourtAttendanceMode,
+          formatSubmitted: false,
+          formatFilledBy: { name: '', rank: '', mobile: '' },
+          appearingAG: { name: '', rank: '', mobile: '' },
+          attendingOfficer: { name: '', rank: '', mobile: '' },
+          nextDateOfHearing: '',
+          officerDeputedForReply: '',
+          vettingOfficerDetails: '',
+          replyFiled: false,
+          replyFilingDate: '',
+          advocateGeneralName: '',
+          investigatingOfficerName: '',
+          replyScrutinizedByHC: false,
+        },
+      ],
+    }))
+  }
+
+  function removeNoticeOfMotionEntry(index: number) {
+    setFormData((prev) => ({
+      ...prev,
+      noticeOfMotion: prev.noticeOfMotion.filter((_, i) => i !== index),
+    }))
+  }
+
+  function updateNoticeOfMotionEntry(index: number, field: keyof NoticeOfMotionDetails, value: any) {
+    setFormData((prev) => {
+      const updated = [...prev.noticeOfMotion]
+      updated[index] = { ...updated[index], [field]: value }
+      return { ...prev, noticeOfMotion: updated }
+    })
+  }
+
+  function updateNoticeOfMotionPerson(index: number, personType: 'formatFilledBy' | 'appearingAG' | 'attendingOfficer', field: 'name' | 'rank' | 'mobile', value: string) {
+    setFormData((prev) => {
+      const updated = [...prev.noticeOfMotion]
+      updated[index] = {
+        ...updated[index],
+        [personType]: {
+          ...(updated[index][personType] || { name: '', rank: '', mobile: '' }),
+          [field]: value,
+        },
+      }
+      return { ...prev, noticeOfMotion: updated }
+    })
+  }
+
   async function handleProceedingSubmit(event: React.FormEvent) {
     event.preventDefault()
     if (!formData.fir || !formData.hearingDetails.dateOfHearing) {
@@ -132,6 +186,20 @@ export default function FIRDetail() {
 
     try {
       setError(null)
+
+      // Validate file if present
+      if (orderOfProceedingFile) {
+        if (orderOfProceedingFile.size > 250 * 1024) {
+          setError('File size exceeds 250 KB limit')
+          return
+        }
+        const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel']
+        if (!allowedTypes.includes(orderOfProceedingFile.type)) {
+          setError('Invalid file type. Only PDF, PNG, JPEG, JPG, and Excel files are allowed.')
+          return
+        }
+      }
+
       const payload: CreateProceedingInput = {
         fir: firId,
         type: formData.type,
@@ -141,9 +209,9 @@ export default function FIRDetail() {
       }
 
       if (formData.type === 'NOTICE_OF_MOTION') {
-        payload.noticeOfMotion = formData.noticeOfMotion
+        payload.noticeOfMotion = formData.noticeOfMotion.length === 1 ? formData.noticeOfMotion[0] : formData.noticeOfMotion
       } else if (formData.type === 'TO_FILE_REPLY') {
-        payload.noticeOfMotion = formData.noticeOfMotion
+        payload.noticeOfMotion = formData.noticeOfMotion.length === 1 ? formData.noticeOfMotion[0] : formData.noticeOfMotion
         payload.replyTracking = formData.replyTracking
       } else if (formData.type === 'ARGUMENT') {
         payload.argumentDetails = formData.argumentDetails
@@ -154,9 +222,10 @@ export default function FIRDetail() {
       // Remove createdBy from payload - backend will set it from auth context
       delete payload.createdBy
 
-      const newProceeding = await createProceeding(payload)
+      const newProceeding = await createProceeding(payload, orderOfProceedingFile || undefined)
       setLocalProceedings((prev) => [newProceeding, ...prev])
       setShowForm(false)
+      setOrderOfProceedingFile(null)
       
       // Reset form but keep FIR selected
       setFormData({
@@ -169,7 +238,7 @@ export default function FIRDetail() {
           judgeName: '',
           courtNumber: '',
         },
-        noticeOfMotion: {
+        noticeOfMotion: [{
           attendanceMode: 'BY_FORMAT',
           formatSubmitted: false,
           formatFilledBy: { name: '', rank: '', mobile: '' },
@@ -183,7 +252,7 @@ export default function FIRDetail() {
           advocateGeneralName: '',
           investigatingOfficerName: '',
           replyScrutinizedByHC: false,
-        },
+        }],
         replyTracking: {
           proceedingInCourt: '',
           orderInShort: '',
@@ -512,257 +581,183 @@ export default function FIRDetail() {
                 <h3 className="mb-4 text-lg font-semibold text-gray-900">Type of Proceeding</h3>
 
                 {formData.type === 'NOTICE_OF_MOTION' && (
-                  <div className="rounded-lg border-2 border-dashed border-gray-300 bg-white p-4">
-                    <h4 className="mb-3 text-sm font-semibold text-gray-700">Notice of Motion Entry</h4>
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <label className="md:col-span-2 text-sm font-medium text-gray-700">
-                        <span className="text-red-500">*</span> How Court is attended (Dropdown)
-                        <select
-                          className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-                          value={formData.noticeOfMotion.attendanceMode}
-                          onChange={(e) =>
-                            setFormData((prev) => ({
-                              ...prev,
-                              noticeOfMotion: {
-                                ...prev.noticeOfMotion,
-                                attendanceMode: e.target.value as CourtAttendanceMode,
-                              },
-                            }))
-                          }
-                          required
-                        >
-                          <option value="BY_FORMAT">By Format</option>
-                          <option value="BY_PERSON">By Person</option>
-                        </select>
-                      </label>
-
-                      {formData.noticeOfMotion.attendanceMode === 'BY_FORMAT' && (
-                        <>
+                  <div className="space-y-6">
+                    {formData.noticeOfMotion.map((entry, index) => (
+                      <div key={index} className="rounded-lg border-2 border-dashed border-gray-300 bg-white p-4">
+                        <div className="mb-4 flex items-center justify-between">
+                          <h4 className="text-sm font-semibold text-gray-700">
+                            Notice of Motion Entry #{index + 1}
+                          </h4>
+                          {formData.noticeOfMotion.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => removeNoticeOfMotionEntry(index)}
+                              className="text-xs font-medium text-red-600 hover:text-red-700"
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </div>
+                        <div className="grid gap-4 md:grid-cols-2">
                           <label className="md:col-span-2 text-sm font-medium text-gray-700">
-                            <span className="text-red-500">*</span> Format Submitted
+                            <span className="text-red-500">*</span> How Court is attended (Dropdown)
                             <select
                               className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-                              value={formData.noticeOfMotion.formatSubmitted ? 'true' : 'false'}
+                              value={entry.attendanceMode}
                               onChange={(e) =>
-                                setFormData((prev) => ({
-                                  ...prev,
-                                  noticeOfMotion: {
-                                    ...prev.noticeOfMotion,
-                                    formatSubmitted: e.target.value === 'true',
-                                  },
-                                }))
+                                updateNoticeOfMotionEntry(index, 'attendanceMode', e.target.value as CourtAttendanceMode)
                               }
                               required
                             >
-                              <option value="false">No</option>
-                              <option value="true">Yes</option>
+                              <option value="BY_FORMAT">By Format</option>
+                              <option value="BY_PERSON">By Person</option>
                             </select>
                           </label>
 
-                          <label className="md:col-span-2 text-sm font-medium text-gray-700">
-                            <span className="text-red-500">*</span> Details of Officer who filled format
-                            <div className="mt-1 grid gap-2 md:grid-cols-3">
-                              <input
-                                type="text"
-                                className="rounded-md border border-gray-300 px-3 py-2"
-                                placeholder="Name *"
-                                value={formData.noticeOfMotion.formatFilledBy.name}
-                                onChange={(e) =>
-                                  setFormData((prev) => ({
-                                    ...prev,
-                                    noticeOfMotion: {
-                                      ...prev.noticeOfMotion,
-                                      formatFilledBy: {
-                                        ...prev.noticeOfMotion.formatFilledBy,
-                                        name: e.target.value,
-                                      },
-                                    },
-                                  }))
-                                }
-                                required
-                              />
-                              <input
-                                type="text"
-                                className="rounded-md border border-gray-300 px-3 py-2"
-                                placeholder="Rank *"
-                                value={formData.noticeOfMotion.formatFilledBy.rank}
-                                onChange={(e) =>
-                                  setFormData((prev) => ({
-                                    ...prev,
-                                    noticeOfMotion: {
-                                      ...prev.noticeOfMotion,
-                                      formatFilledBy: {
-                                        ...prev.noticeOfMotion.formatFilledBy,
-                                        rank: e.target.value,
-                                      },
-                                    },
-                                  }))
-                                }
-                                required
-                              />
-                              <input
-                                type="text"
-                                className="rounded-md border border-gray-300 px-3 py-2"
-                                placeholder="Mobile *"
-                                value={formData.noticeOfMotion.formatFilledBy.mobile}
-                                onChange={(e) =>
-                                  setFormData((prev) => ({
-                                    ...prev,
-                                    noticeOfMotion: {
-                                      ...prev.noticeOfMotion,
-                                      formatFilledBy: {
-                                        ...prev.noticeOfMotion.formatFilledBy,
-                                        mobile: e.target.value,
-                                      },
-                                    },
-                                  }))
-                                }
-                                required
-                              />
-                            </div>
-                          </label>
-                        </>
-                      )}
+                          {entry.attendanceMode === 'BY_FORMAT' && (
+                            <>
+                              <label className="md:col-span-2 text-sm font-medium text-gray-700">
+                                <span className="text-red-500">*</span> Format Submitted
+                                <select
+                                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                                  value={entry.formatSubmitted ? 'true' : 'false'}
+                                  onChange={(e) =>
+                                    updateNoticeOfMotionEntry(index, 'formatSubmitted', e.target.value === 'true')
+                                  }
+                                  required
+                                >
+                                  <option value="false">No</option>
+                                  <option value="true">Yes</option>
+                                </select>
+                              </label>
 
-                      {formData.noticeOfMotion.attendanceMode === 'BY_PERSON' && (
-                        <>
-                          <label className="md:col-span-2 text-sm font-medium text-gray-700">
-                            <span className="text-red-500">*</span> Details of AG who is appearing
-                            <div className="mt-1 grid gap-2 md:grid-cols-3">
-                              <input
-                                type="text"
-                                className="rounded-md border border-gray-300 px-3 py-2"
-                                placeholder="Name *"
-                                value={formData.noticeOfMotion.appearingAG.name}
-                                onChange={(e) =>
-                                  setFormData((prev) => ({
-                                    ...prev,
-                                    noticeOfMotion: {
-                                      ...prev.noticeOfMotion,
-                                      appearingAG: {
-                                        ...prev.noticeOfMotion.appearingAG,
-                                        name: e.target.value,
-                                      },
-                                    },
-                                  }))
-                                }
-                                required
-                              />
-                              <input
-                                type="text"
-                                className="rounded-md border border-gray-300 px-3 py-2"
-                                placeholder="Rank *"
-                                value={formData.noticeOfMotion.appearingAG.rank}
-                                onChange={(e) =>
-                                  setFormData((prev) => ({
-                                    ...prev,
-                                    noticeOfMotion: {
-                                      ...prev.noticeOfMotion,
-                                      appearingAG: {
-                                        ...prev.noticeOfMotion.appearingAG,
-                                        rank: e.target.value,
-                                      },
-                                    },
-                                  }))
-                                }
-                                required
-                              />
-                              <input
-                                type="text"
-                                className="rounded-md border border-gray-300 px-3 py-2"
-                                placeholder="Mobile *"
-                                value={formData.noticeOfMotion.appearingAG.mobile}
-                                onChange={(e) =>
-                                  setFormData((prev) => ({
-                                    ...prev,
-                                    noticeOfMotion: {
-                                      ...prev.noticeOfMotion,
-                                      appearingAG: {
-                                        ...prev.noticeOfMotion.appearingAG,
-                                        mobile: e.target.value,
-                                      },
-                                    },
-                                  }))
-                                }
-                                required
-                              />
-                            </div>
-                          </label>
+                              <label className="md:col-span-2 text-sm font-medium text-gray-700">
+                                <span className="text-red-500">*</span> Details of Officer who filled format
+                                <div className="mt-1 grid gap-2 md:grid-cols-3">
+                                  <input
+                                    type="text"
+                                    className="rounded-md border border-gray-300 px-3 py-2"
+                                    placeholder="Name *"
+                                    value={entry.formatFilledBy?.name || ''}
+                                    onChange={(e) =>
+                                      updateNoticeOfMotionPerson(index, 'formatFilledBy', 'name', e.target.value)
+                                    }
+                                    required
+                                  />
+                                  <input
+                                    type="text"
+                                    className="rounded-md border border-gray-300 px-3 py-2"
+                                    placeholder="Rank *"
+                                    value={entry.formatFilledBy?.rank || ''}
+                                    onChange={(e) =>
+                                      updateNoticeOfMotionPerson(index, 'formatFilledBy', 'rank', e.target.value)
+                                    }
+                                    required
+                                  />
+                                  <input
+                                    type="text"
+                                    className="rounded-md border border-gray-300 px-3 py-2"
+                                    placeholder="Mobile *"
+                                    value={entry.formatFilledBy?.mobile || ''}
+                                    onChange={(e) =>
+                                      updateNoticeOfMotionPerson(index, 'formatFilledBy', 'mobile', e.target.value)
+                                    }
+                                    required
+                                  />
+                                </div>
+                              </label>
+                            </>
+                          )}
 
-                          <label className="md:col-span-2 text-sm font-medium text-gray-700">
-                            <span className="text-red-500">*</span> Details of Officer who is attending
-                            <div className="mt-1 grid gap-2 md:grid-cols-3">
-                              <input
-                                type="text"
-                                className="rounded-md border border-gray-300 px-3 py-2"
-                                placeholder="Name *"
-                                value={formData.noticeOfMotion.attendingOfficer.name}
-                                onChange={(e) =>
-                                  setFormData((prev) => ({
-                                    ...prev,
-                                    noticeOfMotion: {
-                                      ...prev.noticeOfMotion,
-                                      attendingOfficer: {
-                                        ...prev.noticeOfMotion.attendingOfficer,
-                                        name: e.target.value,
-                                      },
-                                    },
-                                  }))
-                                }
-                                required
-                              />
-                              <input
-                                type="text"
-                                className="rounded-md border border-gray-300 px-3 py-2"
-                                placeholder="Rank *"
-                                value={formData.noticeOfMotion.attendingOfficer.rank}
-                                onChange={(e) =>
-                                  setFormData((prev) => ({
-                                    ...prev,
-                                    noticeOfMotion: {
-                                      ...prev.noticeOfMotion,
-                                      attendingOfficer: {
-                                        ...prev.noticeOfMotion.attendingOfficer,
-                                        rank: e.target.value,
-                                      },
-                                    },
-                                  }))
-                                }
-                                required
-                              />
-                              <input
-                                type="text"
-                                className="rounded-md border border-gray-300 px-3 py-2"
-                                placeholder="Mobile *"
-                                value={formData.noticeOfMotion.attendingOfficer.mobile}
-                                onChange={(e) =>
-                                  setFormData((prev) => ({
-                                    ...prev,
-                                    noticeOfMotion: {
-                                      ...prev.noticeOfMotion,
-                                      attendingOfficer: {
-                                        ...prev.noticeOfMotion.attendingOfficer,
-                                        mobile: e.target.value,
-                                      },
-                                    },
-                                  }))
-                                }
-                                required
-                              />
-                            </div>
-                          </label>
-                        </>
-                      )}
+                          {entry.attendanceMode === 'BY_PERSON' && (
+                            <>
+                              <label className="md:col-span-2 text-sm font-medium text-gray-700">
+                                <span className="text-red-500">*</span> Details of AG who is appearing
+                                <div className="mt-1 grid gap-2 md:grid-cols-3">
+                                  <input
+                                    type="text"
+                                    className="rounded-md border border-gray-300 px-3 py-2"
+                                    placeholder="Name *"
+                                    value={entry.appearingAG?.name || ''}
+                                    onChange={(e) =>
+                                      updateNoticeOfMotionPerson(index, 'appearingAG', 'name', e.target.value)
+                                    }
+                                    required
+                                  />
+                                  <input
+                                    type="text"
+                                    className="rounded-md border border-gray-300 px-3 py-2"
+                                    placeholder="Rank *"
+                                    value={entry.appearingAG?.rank || ''}
+                                    onChange={(e) =>
+                                      updateNoticeOfMotionPerson(index, 'appearingAG', 'rank', e.target.value)
+                                    }
+                                    required
+                                  />
+                                  <input
+                                    type="text"
+                                    className="rounded-md border border-gray-300 px-3 py-2"
+                                    placeholder="Mobile *"
+                                    value={entry.appearingAG?.mobile || ''}
+                                    onChange={(e) =>
+                                      updateNoticeOfMotionPerson(index, 'appearingAG', 'mobile', e.target.value)
+                                    }
+                                    required
+                                  />
+                                </div>
+                              </label>
 
-                      <div className="md:col-span-2 mt-2">
-                        <button
-                          type="button"
-                          className="rounded-md border-2 border-purple-500 px-4 py-2 text-sm font-medium text-purple-600 hover:bg-purple-50"
-                        >
-                          + ADD ANOTHER NOTICE OF MOTION ENTRY
-                        </button>
+                              <label className="md:col-span-2 text-sm font-medium text-gray-700">
+                                <span className="text-red-500">*</span> Details of Officer who is attending
+                                <div className="mt-1 grid gap-2 md:grid-cols-3">
+                                  <input
+                                    type="text"
+                                    className="rounded-md border border-gray-300 px-3 py-2"
+                                    placeholder="Name *"
+                                    value={entry.attendingOfficer?.name || ''}
+                                    onChange={(e) =>
+                                      updateNoticeOfMotionPerson(index, 'attendingOfficer', 'name', e.target.value)
+                                    }
+                                    required
+                                  />
+                                  <input
+                                    type="text"
+                                    className="rounded-md border border-gray-300 px-3 py-2"
+                                    placeholder="Rank *"
+                                    value={entry.attendingOfficer?.rank || ''}
+                                    onChange={(e) =>
+                                      updateNoticeOfMotionPerson(index, 'attendingOfficer', 'rank', e.target.value)
+                                    }
+                                    required
+                                  />
+                                  <input
+                                    type="text"
+                                    className="rounded-md border border-gray-300 px-3 py-2"
+                                    placeholder="Mobile *"
+                                    value={entry.attendingOfficer?.mobile || ''}
+                                    onChange={(e) =>
+                                      updateNoticeOfMotionPerson(index, 'attendingOfficer', 'mobile', e.target.value)
+                                    }
+                                    required
+                                  />
+                                </div>
+                              </label>
+                            </>
+                          )}
+                        </div>
                       </div>
-                    </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        addNoticeOfMotionEntry()
+                      }}
+                      className="w-full rounded-md border-2 border-purple-500 px-4 py-2 text-sm font-medium text-purple-600 hover:bg-purple-50"
+                    >
+                      + ADD ANOTHER NOTICE OF MOTION ENTRY
+                    </button>
                   </div>
                 )}
 
@@ -775,15 +770,9 @@ export default function FIRDetail() {
                         <input
                           type="text"
                           className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-                          value={formData.noticeOfMotion.officerDeputedForReply}
+                          value={formData.noticeOfMotion[0]?.officerDeputedForReply || ''}
                           onChange={(e) =>
-                            setFormData((prev) => ({
-                              ...prev,
-                              noticeOfMotion: {
-                                ...prev.noticeOfMotion,
-                                officerDeputedForReply: e.target.value,
-                              },
-                            }))
+                            updateNoticeOfMotionEntry(0, 'officerDeputedForReply', e.target.value)
                           }
                           required
                         />
@@ -794,15 +783,9 @@ export default function FIRDetail() {
                         <input
                           type="text"
                           className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-                          value={formData.noticeOfMotion.advocateGeneralName}
+                          value={formData.noticeOfMotion[0]?.advocateGeneralName || ''}
                           onChange={(e) =>
-                            setFormData((prev) => ({
-                              ...prev,
-                              noticeOfMotion: {
-                                ...prev.noticeOfMotion,
-                                advocateGeneralName: e.target.value,
-                              },
-                            }))
+                            updateNoticeOfMotionEntry(0, 'advocateGeneralName', e.target.value)
                           }
                           required
                         />
@@ -812,15 +795,9 @@ export default function FIRDetail() {
                         <span className="text-red-500">*</span> If reply was filed
                         <select
                           className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-                          value={formData.noticeOfMotion.replyFiled ? 'true' : 'false'}
+                          value={formData.noticeOfMotion[0]?.replyFiled ? 'true' : 'false'}
                           onChange={(e) =>
-                            setFormData((prev) => ({
-                              ...prev,
-                              noticeOfMotion: {
-                                ...prev.noticeOfMotion,
-                                replyFiled: e.target.value === 'true',
-                              },
-                            }))
+                            updateNoticeOfMotionEntry(0, 'replyFiled', e.target.value === 'true')
                           }
                           required
                         >
@@ -834,15 +811,9 @@ export default function FIRDetail() {
                         <input
                           type="text"
                           className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-                          value={formData.noticeOfMotion.vettingOfficerDetails}
+                          value={formData.noticeOfMotion[0]?.vettingOfficerDetails || ''}
                           onChange={(e) =>
-                            setFormData((prev) => ({
-                              ...prev,
-                              noticeOfMotion: {
-                                ...prev.noticeOfMotion,
-                                vettingOfficerDetails: e.target.value,
-                              },
-                            }))
+                            updateNoticeOfMotionEntry(0, 'vettingOfficerDetails', e.target.value)
                           }
                           required
                         />
@@ -853,15 +824,9 @@ export default function FIRDetail() {
                         <input
                           type="text"
                           className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-                          value={formData.noticeOfMotion.investigatingOfficerName}
+                          value={formData.noticeOfMotion[0]?.investigatingOfficerName || ''}
                           onChange={(e) =>
-                            setFormData((prev) => ({
-                              ...prev,
-                              noticeOfMotion: {
-                                ...prev.noticeOfMotion,
-                                investigatingOfficerName: e.target.value,
-                              },
-                            }))
+                            updateNoticeOfMotionEntry(0, 'investigatingOfficerName', e.target.value)
                           }
                           required
                         />
@@ -871,15 +836,9 @@ export default function FIRDetail() {
                         <span className="text-red-500">*</span> Whether reply was scrutinized by HC
                         <select
                           className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-                          value={formData.noticeOfMotion.replyScrutinizedByHC ? 'true' : 'false'}
+                          value={formData.noticeOfMotion[0]?.replyScrutinizedByHC ? 'true' : 'false'}
                           onChange={(e) =>
-                            setFormData((prev) => ({
-                              ...prev,
-                              noticeOfMotion: {
-                                ...prev.noticeOfMotion,
-                                replyScrutinizedByHC: e.target.value === 'true',
-                              },
-                            }))
+                            updateNoticeOfMotionEntry(0, 'replyScrutinizedByHC', e.target.value === 'true')
                           }
                           required
                         >
@@ -1016,7 +975,7 @@ export default function FIRDetail() {
                 <h3 className="mb-4 text-lg font-semibold text-gray-900">Decision Details</h3>
                 <div className="grid gap-4 md:grid-cols-2">
                   <label className="text-sm font-medium text-gray-700">
-                    <span className="text-red-500">*</span> Writ status
+                    Writ status <span className="text-red-500 ml-1">*</span>
                     <select
                       className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
                       value={formData.decisionDetails.writStatus}
@@ -1094,12 +1053,54 @@ export default function FIRDetail() {
                   </label>
 
                   <div className="md:col-span-2">
-                    <button
-                      type="button"
-                      className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
-                    >
-                      <span className="mr-2">☁️</span> UPLOAD ORDER OF PROCEEDING
-                    </button>
+                    <label className="block text-sm font-medium text-gray-700">
+                      Upload Order of Proceeding
+                      <span className="ml-1 text-xs text-gray-500">(PDF, PNG, JPEG, JPG, Excel - Max 250 KB)</span>
+                    </label>
+                    <div className="mt-2 flex items-center gap-3">
+                      <input
+                        id="order-of-proceeding-file-firdetail"
+                        type="file"
+                        accept=".pdf,.png,.jpeg,.jpg,.xlsx,.xls"
+                        className="block w-full text-sm text-gray-500 file:mr-4 file:rounded-md file:border-0 file:bg-indigo-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-indigo-700 hover:file:bg-indigo-100"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          if (file) {
+                            if (file.size > 250 * 1024) {
+                              setError('File size exceeds 250 KB limit')
+                              e.target.value = ''
+                              return
+                            }
+                            const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel']
+                            if (!allowedTypes.includes(file.type)) {
+                              setError('Invalid file type. Only PDF, PNG, JPEG, JPG, and Excel files are allowed.')
+                              e.target.value = ''
+                              return
+                            }
+                            setOrderOfProceedingFile(file)
+                            setError(null)
+                          }
+                        }}
+                      />
+                      {orderOfProceedingFile && (
+                        <div className="flex items-center gap-2 text-sm text-gray-600">
+                          <span>{orderOfProceedingFile.name}</span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              setOrderOfProceedingFile(null)
+                              const fileInput = document.getElementById('order-of-proceeding-file-firdetail') as HTMLInputElement
+                              if (fileInput) fileInput.value = ''
+                            }}
+                            className="text-red-600 hover:text-red-700"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>

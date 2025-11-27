@@ -181,13 +181,14 @@ export interface Proceeding {
   summary?: string
   details?: string
   hearingDetails?: ProceedingHearingDetails
-  noticeOfMotion?: NoticeOfMotionDetails
+  noticeOfMotion?: NoticeOfMotionDetails | NoticeOfMotionDetails[] // Support both single and array
   replyTracking?: ReplyTrackingDetails
   argumentDetails?: ArgumentDetails
   decisionDetails?: DecisionDetails
   createdBy?: string
   draft?: boolean
   attachments?: Array<{ fileName: string; fileUrl: string }>
+  orderOfProceedingFilename?: string // Filename of uploaded order of proceeding
   createdAt?: string
   updatedAt?: string
 }
@@ -198,13 +199,14 @@ export interface CreateProceedingInput {
   summary?: string
   details?: string
   hearingDetails: ProceedingHearingDetails
-  noticeOfMotion?: NoticeOfMotionDetails
+  noticeOfMotion?: NoticeOfMotionDetails | NoticeOfMotionDetails[] // Support both single and array
   replyTracking?: ReplyTrackingDetails
   argumentDetails?: ArgumentDetails
   decisionDetails?: DecisionDetails
   createdBy?: string // Officer ID (optional - backend sets it from JWT token)
   draft?: boolean // Whether this is a draft proceeding
   attachments?: Array<{ fileName: string; fileUrl: string }>
+  orderOfProceedingFilename?: string // Filename of uploaded order of proceeding
 }
 
 export interface CreateFIRInput {
