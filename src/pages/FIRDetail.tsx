@@ -30,13 +30,13 @@ export default function FIRDetail() {
       formatFilledBy: { name: '', rank: '', mobile: '' },
       appearingAG: { name: '', rank: '', mobile: '' },
       attendingOfficer: { name: '', rank: '', mobile: '' },
+      investigatingOfficer: { name: '', rank: '', mobile: '' },
       nextDateOfHearing: '',
       officerDeputedForReply: '',
       vettingOfficerDetails: '',
       replyFiled: false,
       replyFilingDate: '',
       advocateGeneralName: '',
-      investigatingOfficerName: '',
       replyScrutinizedByHC: false,
     }] as NoticeOfMotionDetails[],
     replyTracking: {
@@ -46,6 +46,7 @@ export default function FIRDetail() {
       nextDateOfHearing: '',
     },
     argumentDetails: {
+      details: '',
       nextDateOfHearing: '',
     },
     decisionDetails: {
@@ -56,6 +57,15 @@ export default function FIRDetail() {
     },
   })
   const [orderOfProceedingFile, setOrderOfProceedingFile] = useState<File | null>(null)
+
+  const formatDateInputValue = (value: string | Date | null | undefined): string => {
+    if (!value) return ''
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) {
+      return ''
+    }
+    return date.toISOString().split('T')[0]
+  }
 
   useEffect(() => {
     async function load() {
@@ -125,13 +135,13 @@ export default function FIRDetail() {
           formatFilledBy: { name: '', rank: '', mobile: '' },
           appearingAG: { name: '', rank: '', mobile: '' },
           attendingOfficer: { name: '', rank: '', mobile: '' },
+          investigatingOfficer: { name: '', rank: '', mobile: '' },
           nextDateOfHearing: '',
           officerDeputedForReply: '',
           vettingOfficerDetails: '',
           replyFiled: false,
           replyFilingDate: '',
           advocateGeneralName: '',
-          investigatingOfficerName: '',
           replyScrutinizedByHC: false,
         },
       ],
@@ -153,7 +163,7 @@ export default function FIRDetail() {
     })
   }
 
-  function updateNoticeOfMotionPerson(index: number, personType: 'formatFilledBy' | 'appearingAG' | 'attendingOfficer', field: 'name' | 'rank' | 'mobile', value: string) {
+  function updateNoticeOfMotionPerson(index: number, personType: 'formatFilledBy' | 'appearingAG' | 'attendingOfficer' | 'investigatingOfficer', field: 'name' | 'rank' | 'mobile', value: string) {
     setFormData((prev) => {
       const updated = [...prev.noticeOfMotion]
       updated[index] = {
@@ -244,13 +254,13 @@ export default function FIRDetail() {
           formatFilledBy: { name: '', rank: '', mobile: '' },
           appearingAG: { name: '', rank: '', mobile: '' },
           attendingOfficer: { name: '', rank: '', mobile: '' },
+          investigatingOfficer: { name: '', rank: '', mobile: '' },
           nextDateOfHearing: '',
           officerDeputedForReply: '',
           vettingOfficerDetails: '',
           replyFiled: false,
           replyFilingDate: '',
           advocateGeneralName: '',
-          investigatingOfficerName: '',
           replyScrutinizedByHC: false,
         }],
         replyTracking: {
@@ -260,6 +270,7 @@ export default function FIRDetail() {
           nextDateOfHearing: '',
         },
         argumentDetails: {
+          details: '',
           nextDateOfHearing: '',
         },
         decisionDetails: {
@@ -525,7 +536,7 @@ export default function FIRDetail() {
                   </label>
 
                   <label className="text-sm font-medium text-gray-700">
-                    Name of Judge
+                    Name of Judge <span className="text-red-500">*</span>
                     <input
                       type="text"
                       className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
@@ -537,11 +548,12 @@ export default function FIRDetail() {
                         }))
                       }
                       placeholder="Justice..."
+                      required
                     />
                   </label>
 
                   <label className="text-sm font-medium text-gray-700">
-                    Court Number
+                    Court Number <span className="text-red-500">*</span>
                     <input
                       type="text"
                       className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
@@ -553,6 +565,7 @@ export default function FIRDetail() {
                         }))
                       }
                       placeholder="Court #"
+                      required
                     />
                   </label>
 
@@ -617,7 +630,7 @@ export default function FIRDetail() {
                           {entry.attendanceMode === 'BY_FORMAT' && (
                             <>
                               <label className="md:col-span-2 text-sm font-medium text-gray-700">
-                                <span className="text-red-500">*</span> Format Submitted
+                                Whether format is duly filled and submitted <span className="text-red-500">*</span>
                                 <select
                                   className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
                                   value={entry.formatSubmitted ? 'true' : 'false'}
@@ -632,7 +645,7 @@ export default function FIRDetail() {
                               </label>
 
                               <label className="md:col-span-2 text-sm font-medium text-gray-700">
-                                <span className="text-red-500">*</span> Details of Officer who filled format
+                                Details of officer who has filled it <span className="text-red-500">*</span>
                                 <div className="mt-1 grid gap-2 md:grid-cols-3">
                                   <input
                                     type="text"
@@ -666,13 +679,9 @@ export default function FIRDetail() {
                                   />
                                 </div>
                               </label>
-                            </>
-                          )}
 
-                          {entry.attendanceMode === 'BY_PERSON' && (
-                            <>
                               <label className="md:col-span-2 text-sm font-medium text-gray-700">
-                                <span className="text-red-500">*</span> Details of AG who is appearing
+                                Details of AG who is appearing <span className="text-red-500">*</span>
                                 <div className="mt-1 grid gap-2 md:grid-cols-3">
                                   <input
                                     type="text"
@@ -706,9 +715,49 @@ export default function FIRDetail() {
                                   />
                                 </div>
                               </label>
+                            </>
+                          )}
+
+                          {entry.attendanceMode === 'BY_PERSON' && (
+                            <>
+                              <label className="md:col-span-2 text-sm font-medium text-gray-700">
+                                Details of IO investigating officer <span className="text-red-500">*</span>
+                                <div className="mt-1 grid gap-2 md:grid-cols-3">
+                                  <input
+                                    type="text"
+                                    className="rounded-md border border-gray-300 px-3 py-2"
+                                    placeholder="Name *"
+                                    value={entry.investigatingOfficer?.name || ''}
+                                    onChange={(e) =>
+                                      updateNoticeOfMotionPerson(index, 'investigatingOfficer', 'name', e.target.value)
+                                    }
+                                    required
+                                  />
+                                  <input
+                                    type="text"
+                                    className="rounded-md border border-gray-300 px-3 py-2"
+                                    placeholder="Rank *"
+                                    value={entry.investigatingOfficer?.rank || ''}
+                                    onChange={(e) =>
+                                      updateNoticeOfMotionPerson(index, 'investigatingOfficer', 'rank', e.target.value)
+                                    }
+                                    required
+                                  />
+                                  <input
+                                    type="text"
+                                    className="rounded-md border border-gray-300 px-3 py-2"
+                                    placeholder="Mobile *"
+                                    value={entry.investigatingOfficer?.mobile || ''}
+                                    onChange={(e) =>
+                                      updateNoticeOfMotionPerson(index, 'investigatingOfficer', 'mobile', e.target.value)
+                                    }
+                                    required
+                                  />
+                                </div>
+                              </label>
 
                               <label className="md:col-span-2 text-sm font-medium text-gray-700">
-                                <span className="text-red-500">*</span> Details of Officer who is attending
+                                Details of Officer who is attending <span className="text-red-500">*</span>
                                 <div className="mt-1 grid gap-2 md:grid-cols-3">
                                   <input
                                     type="text"
@@ -742,8 +791,56 @@ export default function FIRDetail() {
                                   />
                                 </div>
                               </label>
+
+                              <label className="md:col-span-2 text-sm font-medium text-gray-700">
+                                Details of AG who is appearing <span className="text-red-500">*</span>
+                                <div className="mt-1 grid gap-2 md:grid-cols-3">
+                                  <input
+                                    type="text"
+                                    className="rounded-md border border-gray-300 px-3 py-2"
+                                    placeholder="Name *"
+                                    value={entry.appearingAG?.name || ''}
+                                    onChange={(e) =>
+                                      updateNoticeOfMotionPerson(index, 'appearingAG', 'name', e.target.value)
+                                    }
+                                    required
+                                  />
+                                  <input
+                                    type="text"
+                                    className="rounded-md border border-gray-300 px-3 py-2"
+                                    placeholder="Rank *"
+                                    value={entry.appearingAG?.rank || ''}
+                                    onChange={(e) =>
+                                      updateNoticeOfMotionPerson(index, 'appearingAG', 'rank', e.target.value)
+                                    }
+                                    required
+                                  />
+                                  <input
+                                    type="text"
+                                    className="rounded-md border border-gray-300 px-3 py-2"
+                                    placeholder="Mobile *"
+                                    value={entry.appearingAG?.mobile || ''}
+                                    onChange={(e) =>
+                                      updateNoticeOfMotionPerson(index, 'appearingAG', 'mobile', e.target.value)
+                                    }
+                                    required
+                                  />
+                                </div>
+                              </label>
                             </>
                           )}
+                        <label className="md:col-span-2 text-sm font-medium text-gray-700">
+                          Next date of hearing <span className="text-red-500">*</span>
+                          <input
+                            type="date"
+                            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                            value={formatDateInputValue(entry.nextDateOfHearing)}
+                            onChange={(e) =>
+                              updateNoticeOfMotionEntry(index, 'nextDateOfHearing', e.target.value)
+                            }
+                            required
+                          />
+                        </label>
                         </div>
                       </div>
                     ))}
@@ -820,16 +917,39 @@ export default function FIRDetail() {
                       </label>
 
                       <label className="text-sm font-medium text-gray-700">
-                        <span className="text-red-500">*</span> Name of IO who will appear
-                        <input
-                          type="text"
-                          className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-                          value={formData.noticeOfMotion[0]?.investigatingOfficerName || ''}
-                          onChange={(e) =>
-                            updateNoticeOfMotionEntry(0, 'investigatingOfficerName', e.target.value)
-                          }
-                          required
-                        />
+                        <span className="text-red-500">*</span> Details of IO who will appear
+                        <div className="mt-1 grid gap-2 md:grid-cols-3">
+                          <input
+                            type="text"
+                            className="rounded-md border border-gray-300 px-3 py-2"
+                            placeholder="Name *"
+                            value={formData.noticeOfMotion[0]?.investigatingOfficer?.name || ''}
+                            onChange={(e) =>
+                              updateNoticeOfMotionPerson(0, 'investigatingOfficer', 'name', e.target.value)
+                            }
+                            required
+                          />
+                          <input
+                            type="text"
+                            className="rounded-md border border-gray-300 px-3 py-2"
+                            placeholder="Rank *"
+                            value={formData.noticeOfMotion[0]?.investigatingOfficer?.rank || ''}
+                            onChange={(e) =>
+                              updateNoticeOfMotionPerson(0, 'investigatingOfficer', 'rank', e.target.value)
+                            }
+                            required
+                          />
+                          <input
+                            type="text"
+                            className="rounded-md border border-gray-300 px-3 py-2"
+                            placeholder="Mobile *"
+                            value={formData.noticeOfMotion[0]?.investigatingOfficer?.mobile || ''}
+                            onChange={(e) =>
+                              updateNoticeOfMotionPerson(0, 'investigatingOfficer', 'mobile', e.target.value)
+                            }
+                            required
+                          />
+                        </div>
                       </label>
 
                       <label className="text-sm font-medium text-gray-700">
@@ -948,12 +1068,30 @@ export default function FIRDetail() {
                   <div className="rounded-lg border-2 border-dashed border-gray-300 bg-white p-4">
                     <h4 className="mb-3 text-sm font-semibold text-gray-700">Argument Entry</h4>
                     <div className="grid gap-4 md:grid-cols-2">
+                      <label className="md:col-span-2 text-sm font-medium text-gray-700">
+                        Argument details <span className="text-red-500">*</span>
+                        <textarea
+                          className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                          rows={3}
+                          value={formData.argumentDetails.details}
+                          onChange={(e) =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              argumentDetails: {
+                                ...prev.argumentDetails,
+                                details: e.target.value,
+                              },
+                            }))
+                          }
+                          required
+                        />
+                      </label>
                       <label className="text-sm font-medium text-gray-700">
-                        Next Date of Hearing
+                        Next date of hearing <span className="text-red-500">*</span>
                         <input
                           type="date"
                           className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-                          value={formData.argumentDetails.nextDateOfHearing}
+                          value={formatDateInputValue(formData.argumentDetails.nextDateOfHearing)}
                           onChange={(e) =>
                             setFormData((prev) => ({
                               ...prev,
@@ -963,6 +1101,7 @@ export default function FIRDetail() {
                               },
                             }))
                           }
+                          required
                         />
                       </label>
                     </div>

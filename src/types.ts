@@ -145,13 +145,13 @@ export interface NoticeOfMotionDetails {
   formatFilledBy?: PersonDetails
   appearingAG?: PersonDetails
   attendingOfficer?: PersonDetails
+  investigatingOfficer?: PersonDetails
   nextDateOfHearing?: string
   officerDeputedForReply?: string
   vettingOfficerDetails?: string
   replyFiled?: boolean
   replyFilingDate?: string
   advocateGeneralName?: string
-  investigatingOfficerName?: string
   replyScrutinizedByHC?: boolean
 }
 
@@ -163,6 +163,7 @@ export interface ReplyTrackingDetails {
 }
 
 export interface ArgumentDetails {
+  details?: string
   nextDateOfHearing?: string
 }
 
