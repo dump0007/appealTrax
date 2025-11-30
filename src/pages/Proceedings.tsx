@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { createProceeding, fetchAllProceedings, fetchDraftProceedingByFIR, fetchFIRs, searchFIRs } from '../lib/api'
 import { useAuthStore, useApiCacheStore } from '../store'
-import type { FIR, Proceeding, ProceedingType, CourtAttendanceMode, WritStatus, CreateProceedingInput, NoticeOfMotionDetails } from '../types'
+import type { FIR, Proceeding, ProceedingType, CourtAttendanceMode, CreateProceedingInput, NoticeOfMotionDetails, AnyOtherDetails, PersonDetails } from '../types'
 
 export default function Proceedings() {
   const navigate = useNavigate()
@@ -35,8 +35,9 @@ export default function Proceedings() {
       attendanceMode: 'BY_FORMAT' as CourtAttendanceMode,
       formatSubmitted: false,
       formatFilledBy: { name: '', rank: '', mobile: '' },
-      appearingAG: { name: '', rank: '', mobile: '' },
-      attendingOfficer: { name: '', rank: '', mobile: '' },
+      aagDgWhoWillAppear: '',
+      appearingAGDetails: '',
+      attendingOfficerDetails: '',
       investigatingOfficer: { name: '', rank: '', mobile: '' },
       details: '',
       officerDeputedForReply: '',
@@ -52,15 +53,22 @@ export default function Proceedings() {
       nextActionablePoint: '',
       nextDateOfHearing: '',
     },
-    argumentDetails: {
+    anyOtherDetails: [{
+      attendingOfficerDetails: '',
+      officerDetails: { name: '', rank: '', mobile: '' },
+      appearingAGDetails: '',
       details: '',
+    }],
+    argumentDetails: [{
+      argumentBy: '',
+      argumentWith: '',
       nextDateOfHearing: '',
-    },
+    }],
     decisionDetails: {
-      writStatus: 'PENDING' as WritStatus,
-      remarks: '',
-      decisionByCourt: '',
+      writStatus: undefined,
       dateOfDecision: '',
+      decisionByCourt: '',
+      remarks: '',
     },
   })
   const [orderOfProceedingFile, setOrderOfProceedingFile] = useState<File | null>(null)
@@ -175,7 +183,16 @@ export default function Proceedings() {
       const selectedFir = firs.find((f) => f._id === formData.fir) || 
                           firSearchResults.find((f) => f._id === formData.fir)
       if (selectedFir?.writType !== 'QUASHING') {
-        setFormData((prev) => ({ ...prev, type: 'NOTICE_OF_MOTION' }))
+        setFormData((prev) => ({ 
+          ...prev, 
+          type: 'NOTICE_OF_MOTION',
+          decisionDetails: prev.decisionDetails || {
+            writStatus: undefined,
+            dateOfDecision: '',
+            decisionByCourt: '',
+            remarks: '',
+          },
+        }))
       }
     }
   }, [formData.fir, formData.type, firs, firSearchResults])
@@ -285,7 +302,7 @@ export default function Proceedings() {
           attendanceMode: 'BY_FORMAT' as CourtAttendanceMode,
           formatSubmitted: false,
           formatFilledBy: { name: '', rank: '', mobile: '' },
-          appearingAG: { name: '', rank: '', mobile: '' },
+          aagDgWhoWillAppear: '',
           attendingOfficer: { name: '', rank: '', mobile: '' },
           investigatingOfficer: { name: '', rank: '', mobile: '' },
           details: '',
@@ -319,6 +336,43 @@ export default function Proceedings() {
     })
   }
 
+  function addToFileReplyEntry() {
+    setFormData((prev) => ({
+      ...prev,
+      noticeOfMotion: [
+        ...prev.noticeOfMotion,
+        {
+          attendanceMode: 'BY_FORMAT' as CourtAttendanceMode,
+          formatSubmitted: false,
+          formatFilledBy: { name: '', rank: '', mobile: '' },
+          aagDgWhoWillAppear: '',
+          appearingAGDetails: '',
+          attendingOfficerDetails: '',
+          investigatingOfficer: { name: '', rank: '', mobile: '' },
+          investigatingOfficerName: '',
+          details: '',
+          officerDeputedForReply: '',
+          vettingOfficerDetails: '',
+          replyFiled: false,
+          replyFilingDate: '',
+          advocateGeneralName: '',
+          replyScrutinizedByHC: false,
+          proceedingInCourt: '',
+          orderInShort: '',
+          nextActionablePoint: '',
+          nextDateOfHearingReply: '',
+        },
+      ],
+    }))
+  }
+
+  function removeToFileReplyEntry(index: number) {
+    setFormData((prev) => ({
+      ...prev,
+      noticeOfMotion: prev.noticeOfMotion.filter((_, i) => i !== index),
+    }))
+  }
+
   function updateNoticeOfMotionEntry(index: number, field: keyof NoticeOfMotionDetails, value: any) {
     setFormData((prev) => {
       const updated = [...prev.noticeOfMotion]
@@ -338,6 +392,105 @@ export default function Proceedings() {
         },
       }
       return { ...prev, noticeOfMotion: updated }
+    })
+  }
+
+  function addAnyOtherEntry() {
+    setFormData((prev) => ({
+      ...prev,
+      anyOtherDetails: [
+        ...(prev.anyOtherDetails || []),
+        {
+          attendingOfficerDetails: '',
+          officerDetails: { name: '', rank: '', mobile: '' },
+          appearingAGDetails: '',
+          details: '',
+        },
+      ],
+    }))
+  }
+
+  function removeAnyOtherEntry(index: number) {
+    setFormData((prev) => ({
+      ...prev,
+      anyOtherDetails: (prev.anyOtherDetails || []).filter((_, i) => i !== index),
+    }))
+    // Clean up file for removed entry
+    setNoticeOfMotionFiles(prev => {
+      const newMap = new Map<number, File>()
+      prev.forEach((file, idx) => {
+        if (idx < index) {
+          newMap.set(idx, file)
+        } else if (idx > index) {
+          newMap.set(idx - 1, file)
+        }
+      })
+      return newMap
+    })
+  }
+
+  function updateAnyOtherEntry(index: number, field: keyof AnyOtherDetails, value: any) {
+    setFormData((prev) => {
+      const updated = [...(prev.anyOtherDetails || [])]
+      updated[index] = { ...updated[index], [field]: value }
+      return { ...prev, anyOtherDetails: updated }
+    })
+  }
+
+  function updateAnyOtherPerson(index: number, personType: 'officerDetails', field: 'name' | 'rank' | 'mobile', value: string) {
+    setFormData((prev) => {
+      const updated = [...(prev.anyOtherDetails || [])]
+      updated[index] = {
+        ...updated[index],
+        [personType]: {
+          name: (updated[index][personType] as PersonDetails)?.name || '',
+          rank: (updated[index][personType] as PersonDetails)?.rank || '',
+          mobile: (updated[index][personType] as PersonDetails)?.mobile || '',
+          [field]: value,
+        } as { name: string; rank: string; mobile: string },
+      }
+      return { ...prev, anyOtherDetails: updated }
+    })
+  }
+
+  function addArgumentEntry() {
+    setFormData((prev) => ({
+      ...prev,
+      argumentDetails: [
+        ...(prev.argumentDetails || []),
+        {
+          argumentBy: '',
+          argumentWith: '',
+          nextDateOfHearing: '',
+        },
+      ],
+    }))
+  }
+
+  function removeArgumentEntry(index: number) {
+    setFormData((prev) => ({
+      ...prev,
+      argumentDetails: (prev.argumentDetails || []).filter((_, i) => i !== index),
+    }))
+    // Clean up file for removed entry
+    setNoticeOfMotionFiles(prev => {
+      const newMap = new Map<number, File>()
+      prev.forEach((file, idx) => {
+        if (idx < index) {
+          newMap.set(idx, file)
+        } else if (idx > index) {
+          newMap.set(idx - 1, file)
+        }
+      })
+      return newMap
+    })
+  }
+
+  function updateArgumentEntry(index: number, field: 'argumentBy' | 'argumentWith' | 'nextDateOfHearing', value: any) {
+    setFormData((prev) => {
+      const updated = [...(prev.argumentDetails || [])]
+      updated[index] = { ...updated[index], [field]: value }
+      return { ...prev, argumentDetails: updated }
     })
   }
 
@@ -380,12 +533,21 @@ export default function Proceedings() {
       if (formData.type === 'NOTICE_OF_MOTION') {
         payload.noticeOfMotion = formData.noticeOfMotion.length === 1 ? formData.noticeOfMotion[0] : formData.noticeOfMotion
       } else if (formData.type === 'TO_FILE_REPLY') {
-        // TO_FILE_REPLY uses both noticeOfMotion (for officer/AG fields) and replyTracking (for court details)
+        // TO_FILE_REPLY now stores replyTracking fields in each noticeOfMotion entry
         payload.noticeOfMotion = formData.noticeOfMotion.length === 1 ? formData.noticeOfMotion[0] : formData.noticeOfMotion
-        payload.replyTracking = formData.replyTracking
+        // replyTracking fields are now embedded in each noticeOfMotion entry
       } else if (formData.type === 'ARGUMENT') {
-        payload.argumentDetails = formData.argumentDetails
-      } else if (formData.type === 'DECISION') {
+        payload.argumentDetails = formData.argumentDetails && formData.argumentDetails.length > 0 
+          ? (formData.argumentDetails.length === 1 ? formData.argumentDetails[0] : formData.argumentDetails)
+          : undefined
+      } else if (formData.type === 'ANY_OTHER') {
+        payload.anyOtherDetails = formData.anyOtherDetails && formData.anyOtherDetails.length > 0 
+          ? formData.anyOtherDetails
+          : undefined
+      }
+      
+      // Add Decision Details if writStatus is provided
+      if (formData.decisionDetails?.writStatus) {
         payload.decisionDetails = formData.decisionDetails
       }
 
@@ -429,15 +591,22 @@ export default function Proceedings() {
           nextActionablePoint: '',
           nextDateOfHearing: '',
         },
-        argumentDetails: {
-          details: '',
+        argumentDetails: [{
+          argumentBy: '',
+          argumentWith: '',
           nextDateOfHearing: '',
-        },
+        }],
+        anyOtherDetails: [{
+          attendingOfficerDetails: '',
+          officerDetails: { name: '', rank: '', mobile: '' },
+          appearingAGDetails: '',
+          details: '',
+        }],
         decisionDetails: {
-          writStatus: 'PENDING',
-          remarks: '',
-          decisionByCourt: '',
+          writStatus: undefined,
           dateOfDecision: '',
+          decisionByCourt: '',
+          remarks: '',
         },
       })
     } catch (err) {
@@ -508,7 +677,7 @@ export default function Proceedings() {
         />
         <StatCard
           label="Decisions"
-          value={stats.byType.DECISION || 0}
+          value={stats.byType.ANY_OTHER || 0}
           loading={loading}
           icon="✅"
           color="purple"
@@ -922,45 +1091,37 @@ export default function Proceedings() {
                             </label>
 
                             <label className="md:col-span-2 text-sm font-medium text-gray-700">
-                              Details of AG who is appearing <span className="text-red-500 ml-1">*</span>
-                              <div className="mt-1 grid gap-2 md:grid-cols-3">
-                                <input
-                                  type="text"
-                                  className="rounded-md border border-gray-300 px-3 py-2"
-                                  placeholder="Name *"
-                                  value={entry.appearingAG?.name || ''}
-                                  onChange={(e) =>
-                                    updateNoticeOfMotionPerson(index, 'appearingAG', 'name', e.target.value)
-                                  }
-                                  required
-                                />
-                                <input
-                                  type="text"
-                                  className="rounded-md border border-gray-300 px-3 py-2"
-                                  placeholder="Rank *"
-                                  value={entry.appearingAG?.rank || ''}
-                                  onChange={(e) =>
-                                    updateNoticeOfMotionPerson(index, 'appearingAG', 'rank', e.target.value)
-                                  }
-                                  required
-                                />
-                                <input
-                                  type="text"
-                                  className="rounded-md border border-gray-300 px-3 py-2"
-                                  placeholder="Mobile *"
-                                  value={entry.appearingAG?.mobile || ''}
-                                  onChange={(e) =>
-                                    updateNoticeOfMotionPerson(index, 'appearingAG', 'mobile', e.target.value)
-                                  }
-                                  required
-                                />
-                              </div>
+                              Details of AAG/DG who will appear <span className="text-red-500 ml-1">*</span>
+                              <input
+                                type="text"
+                                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                                placeholder="Enter details of AAG/DG who will appear"
+                                value={entry.aagDgWhoWillAppear || ''}
+                                onChange={(e) =>
+                                  updateNoticeOfMotionEntry(index, 'aagDgWhoWillAppear', e.target.value)
+                                }
+                                required
+                              />
                             </label>
                           </>
                         )}
 
                         {entry.attendanceMode === 'BY_PERSON' && (
                           <>
+                            <label className="md:col-span-2 text-sm font-medium text-gray-700">
+                              Details of Officer who is attending <span className="text-red-500 ml-1">*</span>
+                              <input
+                                type="text"
+                                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                                placeholder="Enter details of officer who is attending"
+                                value={entry.attendingOfficerDetails || ''}
+                                onChange={(e) =>
+                                  updateNoticeOfMotionEntry(index, 'attendingOfficerDetails', e.target.value)
+                                }
+                                required
+                              />
+                            </label>
+
                             <label className="md:col-span-2 text-sm font-medium text-gray-700">
                               Details of IO investigating officer <span className="text-red-500 ml-1">*</span>
                               <div className="mt-1 grid gap-2 md:grid-cols-3">
@@ -998,75 +1159,17 @@ export default function Proceedings() {
                             </label>
 
                             <label className="md:col-span-2 text-sm font-medium text-gray-700">
-                              Details of Officer who is attending <span className="text-red-500 ml-1">*</span>
-                              <div className="mt-1 grid gap-2 md:grid-cols-3">
-                                <input
-                                  type="text"
-                                  className="rounded-md border border-gray-300 px-3 py-2"
-                                  placeholder="Name *"
-                                  value={entry.attendingOfficer?.name || ''}
-                                  onChange={(e) =>
-                                    updateNoticeOfMotionPerson(index, 'attendingOfficer', 'name', e.target.value)
-                                  }
-                                  required
-                                />
-                                <input
-                                  type="text"
-                                  className="rounded-md border border-gray-300 px-3 py-2"
-                                  placeholder="Rank *"
-                                  value={entry.attendingOfficer?.rank || ''}
-                                  onChange={(e) =>
-                                    updateNoticeOfMotionPerson(index, 'attendingOfficer', 'rank', e.target.value)
-                                  }
-                                  required
-                                />
-                                <input
-                                  type="text"
-                                  className="rounded-md border border-gray-300 px-3 py-2"
-                                  placeholder="Mobile *"
-                                  value={entry.attendingOfficer?.mobile || ''}
-                                  onChange={(e) =>
-                                    updateNoticeOfMotionPerson(index, 'attendingOfficer', 'mobile', e.target.value)
-                                  }
-                                  required
-                                />
-                              </div>
-                            </label>
-
-                            <label className="md:col-span-2 text-sm font-medium text-gray-700">
                               Details of AG who is appearing <span className="text-red-500 ml-1">*</span>
-                              <div className="mt-1 grid gap-2 md:grid-cols-3">
-                                <input
-                                  type="text"
-                                  className="rounded-md border border-gray-300 px-3 py-2"
-                                  placeholder="Name *"
-                                  value={entry.appearingAG?.name || ''}
-                                  onChange={(e) =>
-                                    updateNoticeOfMotionPerson(index, 'appearingAG', 'name', e.target.value)
-                                  }
-                                  required
-                                />
-                                <input
-                                  type="text"
-                                  className="rounded-md border border-gray-300 px-3 py-2"
-                                  placeholder="Rank *"
-                                  value={entry.appearingAG?.rank || ''}
-                                  onChange={(e) =>
-                                    updateNoticeOfMotionPerson(index, 'appearingAG', 'rank', e.target.value)
-                                  }
-                                  required
-                                />
-                                <input
-                                  type="text"
-                                  className="rounded-md border border-gray-300 px-3 py-2"
-                                  placeholder="Mobile *"
-                                  value={entry.appearingAG?.mobile || ''}
-                                  onChange={(e) =>
-                                    updateNoticeOfMotionPerson(index, 'appearingAG', 'mobile', e.target.value)
-                                  }
-                                  required
-                                />
-                              </div>
+                              <input
+                                type="text"
+                                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                                placeholder="Enter details of AG who is appearing"
+                                value={entry.appearingAGDetails || ''}
+                                onChange={(e) =>
+                                  updateNoticeOfMotionEntry(index, 'appearingAGDetails', e.target.value)
+                                }
+                                required
+                              />
                             </label>
                           </>
                         )}
@@ -1156,423 +1259,552 @@ export default function Proceedings() {
               )}
 
               {formData.type === 'TO_FILE_REPLY' && (
-                <div className="rounded-lg border-2 border-dashed border-gray-300 bg-white p-4">
-                  <h4 className="mb-3 text-sm font-semibold text-gray-700">To File Reply Entry</h4>
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <label className="text-sm font-medium text-gray-700">
-                      Officer deputed for file reply <span className="text-red-500 ml-1">*</span>
-                      <input
-                        type="text"
-                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-                        value={formData.noticeOfMotion[0]?.officerDeputedForReply || ''}
-                        onChange={(e) =>
-                          updateNoticeOfMotionEntry(0, 'officerDeputedForReply', e.target.value)
-                        }
-                        required
-                      />
-                    </label>
-
-                    <label className="text-sm font-medium text-gray-700">
-                      Name of AG who will vet <span className="text-red-500 ml-1">*</span>
-                      <input
-                        type="text"
-                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-                        value={formData.noticeOfMotion[0]?.advocateGeneralName || ''}
-                        onChange={(e) =>
-                          updateNoticeOfMotionEntry(0, 'advocateGeneralName', e.target.value)
-                        }
-                        required
-                      />
-                    </label>
-
-                    <label className="text-sm font-medium text-gray-700">
-                      If reply was filed <span className="text-red-500 ml-1">*</span>
-                      <select
-                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-                        value={formData.noticeOfMotion[0]?.replyFiled ? 'true' : 'false'}
-                        onChange={(e) =>
-                          updateNoticeOfMotionEntry(0, 'replyFiled', e.target.value === 'true')
-                        }
-                        required
-                      >
-                        <option value="false">No</option>
-                        <option value="true">Yes</option>
-                      </select>
-                    </label>
-
-                    <label className="text-sm font-medium text-gray-700">
-                      Name of AAG/DG who will vet <span className="text-red-500 ml-1">*</span>
-                      <input
-                        type="text"
-                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-                        value={formData.noticeOfMotion[0]?.vettingOfficerDetails || ''}
-                        onChange={(e) =>
-                          updateNoticeOfMotionEntry(0, 'vettingOfficerDetails', e.target.value)
-                        }
-                        required
-                      />
-                    </label>
-
-                    <label className="text-sm font-medium text-gray-700">
-                      Details of IO who will appear <span className="text-red-500 ml-1">*</span>
-                      <div className="mt-1 grid gap-2 md:grid-cols-3">
-                        <input
-                          type="text"
-                          className="rounded-md border border-gray-300 px-3 py-2"
-                          placeholder="Name *"
-                          value={formData.noticeOfMotion[0]?.investigatingOfficer?.name || ''}
-                          onChange={(e) =>
-                            updateNoticeOfMotionPerson(0, 'investigatingOfficer', 'name', e.target.value)
-                          }
-                          required
-                        />
-                        <input
-                          type="text"
-                          className="rounded-md border border-gray-300 px-3 py-2"
-                          placeholder="Rank *"
-                          value={formData.noticeOfMotion[0]?.investigatingOfficer?.rank || ''}
-                          onChange={(e) =>
-                            updateNoticeOfMotionPerson(0, 'investigatingOfficer', 'rank', e.target.value)
-                          }
-                          required
-                        />
-                        <input
-                          type="text"
-                          className="rounded-md border border-gray-300 px-3 py-2"
-                          placeholder="Mobile *"
-                          value={formData.noticeOfMotion[0]?.investigatingOfficer?.mobile || ''}
-                          onChange={(e) =>
-                            updateNoticeOfMotionPerson(0, 'investigatingOfficer', 'mobile', e.target.value)
-                          }
-                          required
-                        />
-                      </div>
-                    </label>
-
-                    <label className="text-sm font-medium text-gray-700">
-                      Whether reply was scrutinized by HC <span className="text-red-500 ml-1">*</span>
-                      <select
-                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-                        value={formData.noticeOfMotion[0]?.replyScrutinizedByHC ? 'true' : 'false'}
-                        onChange={(e) =>
-                          updateNoticeOfMotionEntry(0, 'replyScrutinizedByHC', e.target.value === 'true')
-                        }
-                        required
-                      >
-                        <option value="false">No</option>
-                        <option value="true">Yes</option>
-                      </select>
-                    </label>
-
-                    <label className="md:col-span-2 text-sm font-medium text-gray-700">
-                      Proceeding in court <span className="text-red-500 ml-1">*</span>
-                      <textarea
-                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-                        rows={2}
-                        value={formData.replyTracking.proceedingInCourt}
-                        onChange={(e) =>
-                          setFormData((prev) => ({
-                            ...prev,
-                            replyTracking: {
-                              ...prev.replyTracking,
-                              proceedingInCourt: e.target.value,
-                            },
-                          }))
-                        }
-                        required
-                      />
-                    </label>
-
-                    <label className="text-sm font-medium text-gray-700">
-                      Order in short <span className="text-red-500 ml-1">*</span>
-                      <input
-                        type="text"
-                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-                        value={formData.replyTracking.orderInShort}
-                        onChange={(e) =>
-                          setFormData((prev) => ({
-                            ...prev,
-                            replyTracking: {
-                              ...prev.replyTracking,
-                              orderInShort: e.target.value,
-                            },
-                          }))
-                        }
-                        required
-                      />
-                    </label>
-
-                    <label className="text-sm font-medium text-gray-700">
-                      Next Date of Hearing <span className="text-red-500 ml-1">*</span>
-                      <input
-                        type="date"
-                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-                        value={formData.replyTracking.nextDateOfHearing}
-                        onChange={(e) =>
-                          setFormData((prev) => ({
-                            ...prev,
-                            replyTracking: {
-                              ...prev.replyTracking,
-                              nextDateOfHearing: e.target.value,
-                            },
-                          }))
-                        }
-                        required
-                      />
-                    </label>
-
-                    <label className="md:col-span-2 text-sm font-medium text-gray-700">
-                      Next actionable point <span className="text-red-500 ml-1">*</span>
-                      <textarea
-                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-                        rows={2}
-                        value={formData.replyTracking.nextActionablePoint}
-                        onChange={(e) =>
-                          setFormData((prev) => ({
-                            ...prev,
-                            replyTracking: {
-                              ...prev.replyTracking,
-                              nextActionablePoint: e.target.value,
-                            },
-                          }))
-                        }
-                        required
-                      />
-                    </label>
-
-                    <div className="md:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700">
-                        Upload Order of Proceeding
-                        <span className="ml-1 text-xs text-gray-500">(PDF, PNG, JPEG, JPG, Excel - Max 250 KB)</span>
-                      </label>
-                      <div className="mt-2 flex items-center gap-3">
-                        <input
-                          id="order-of-proceeding-file-proceedings-reply"
-                          type="file"
-                          accept=".pdf,.png,.jpeg,.jpg,.xlsx,.xls"
-                          className="block w-full text-sm text-gray-500 file:mr-4 file:rounded-md file:border-0 file:bg-indigo-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-indigo-700 hover:file:bg-indigo-100"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0]
-                            if (file) {
-                              if (file.size > 250 * 1024) {
-                                setError('File size exceeds 250 KB limit')
-                                e.target.value = ''
-                                return
-                              }
-                              const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel']
-                              if (!allowedTypes.includes(file.type)) {
-                                setError('Invalid file type. Only PDF, PNG, JPEG, JPG, and Excel files are allowed.')
-                                e.target.value = ''
-                                return
-                              }
-                              setOrderOfProceedingFile(file)
-                              setError(null)
-                            }
-                          }}
-                        />
-                        {orderOfProceedingFile && (
-                          <div className="flex items-center gap-2 text-sm text-gray-600">
-                            <span>{orderOfProceedingFile.name}</span>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.preventDefault()
-                                e.stopPropagation()
-                                setOrderOfProceedingFile(null)
-                                const fileInput = document.getElementById('order-of-proceeding-file-proceedings-reply') as HTMLInputElement
-                                if (fileInput) fileInput.value = ''
-                              }}
-                              className="text-red-600 hover:text-red-700"
-                            >
-                              ×
-                            </button>
-                          </div>
+                <div className="space-y-4">
+                  {formData.noticeOfMotion.map((entry, index) => (
+                    <div key={index} className="rounded-lg border-2 border-dashed border-gray-300 bg-white p-4">
+                      <div className="mb-4 flex items-center justify-between">
+                        <h4 className="text-sm font-semibold text-gray-700">
+                          {formData.noticeOfMotion.length === 1 
+                            ? 'To File Reply Entry' 
+                            : `To File Reply Entry ${index + 1}`}
+                        </h4>
+                        {formData.noticeOfMotion.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeToFileReplyEntry(index)}
+                            className="text-xs font-medium text-red-600 hover:text-red-700"
+                          >
+                            Remove
+                          </button>
                         )}
                       </div>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <label className="text-sm font-medium text-gray-700">
+                          Officer deputed for file reply <span className="text-red-500 ml-1">*</span>
+                          <input
+                            type="text"
+                            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                            value={entry.officerDeputedForReply || ''}
+                            onChange={(e) =>
+                              updateNoticeOfMotionEntry(index, 'officerDeputedForReply', e.target.value)
+                            }
+                            required
+                          />
+                        </label>
+
+                        <label className="text-sm font-medium text-gray-700">
+                          Name of AG who will vet the Doc <span className="text-red-500 ml-1">*</span>
+                          <input
+                            type="text"
+                            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                            value={entry.advocateGeneralName || ''}
+                            onChange={(e) =>
+                              updateNoticeOfMotionEntry(index, 'advocateGeneralName', e.target.value)
+                            }
+                            required
+                          />
+                        </label>
+
+                        <label className="text-sm font-medium text-gray-700">
+                          If reply was filed <span className="text-red-500 ml-1">*</span>
+                          <select
+                            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                            value={entry.replyFiled ? 'true' : 'false'}
+                            onChange={(e) =>
+                              updateNoticeOfMotionEntry(index, 'replyFiled', e.target.value === 'true')
+                            }
+                            required
+                          >
+                            <option value="false">No</option>
+                            <option value="true">Yes</option>
+                          </select>
+                        </label>
+
+                        {entry.replyFiled && (
+                          <label className="text-sm font-medium text-gray-700">
+                            Date of filing reply <span className="text-red-500 ml-1">*</span>
+                            <input
+                              type="date"
+                              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                              value={formatDateInputValue(entry.replyFilingDate)}
+                              onChange={(e) =>
+                                updateNoticeOfMotionEntry(index, 'replyFilingDate', e.target.value)
+                              }
+                              required
+                            />
+                          </label>
+                        )}
+
+                        <label className="text-sm font-medium text-gray-700">
+                          Name of AAG/DG who will appear in Court <span className="text-red-500 ml-1">*</span>
+                          <input
+                            type="text"
+                            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                            value={entry.vettingOfficerDetails || ''}
+                            onChange={(e) =>
+                              updateNoticeOfMotionEntry(index, 'vettingOfficerDetails', e.target.value)
+                            }
+                            required
+                          />
+                        </label>
+
+                        <label className="text-sm font-medium text-gray-700">
+                          Name of IO who will appear in Court <span className="text-red-500 ml-1">*</span>
+                          <input
+                            type="text"
+                            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                            placeholder="Enter name of IO who will appear in Court"
+                            value={entry.investigatingOfficerName || ''}
+                            onChange={(e) =>
+                              updateNoticeOfMotionEntry(index, 'investigatingOfficerName', e.target.value)
+                            }
+                            required
+                          />
+                        </label>
+
+                        <label className="text-sm font-medium text-gray-700">
+                          Whether reply was scrutinized by HQLHC <span className="text-red-500 ml-1">*</span>
+                          <select
+                            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                            value={entry.replyScrutinizedByHC ? 'true' : 'false'}
+                            onChange={(e) =>
+                              updateNoticeOfMotionEntry(index, 'replyScrutinizedByHC', e.target.value === 'true')
+                            }
+                            required
+                          >
+                            <option value="false">No</option>
+                            <option value="true">Yes</option>
+                          </select>
+                        </label>
+
+                        <label className="md:col-span-2 text-sm font-medium text-gray-700">
+                          Proceeding in court <span className="text-red-500 ml-1">*</span>
+                          <textarea
+                            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                            rows={2}
+                            value={entry.proceedingInCourt || ''}
+                            onChange={(e) =>
+                              updateNoticeOfMotionEntry(index, 'proceedingInCourt', e.target.value)
+                            }
+                            required
+                          />
+                        </label>
+
+                        <label className="text-sm font-medium text-gray-700">
+                          Order in short <span className="text-red-500 ml-1">*</span>
+                          <input
+                            type="text"
+                            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                            value={entry.orderInShort || ''}
+                            onChange={(e) =>
+                              updateNoticeOfMotionEntry(index, 'orderInShort', e.target.value)
+                            }
+                            required
+                          />
+                        </label>
+
+                        <label className="md:col-span-2 text-sm font-medium text-gray-700">
+                          Next actionable point <span className="text-red-500 ml-1">*</span>
+                          <textarea
+                            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                            rows={2}
+                            value={entry.nextActionablePoint || ''}
+                            onChange={(e) =>
+                              updateNoticeOfMotionEntry(index, 'nextActionablePoint', e.target.value)
+                            }
+                            required
+                          />
+                        </label>
+
+                        <label className="text-sm font-medium text-gray-700">
+                          Next Date of Hearing <span className="text-red-500 ml-1">*</span>
+                          <input
+                            type="date"
+                            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                            value={formatDateInputValue(entry.nextDateOfHearingReply)}
+                            onChange={(e) =>
+                              updateNoticeOfMotionEntry(index, 'nextDateOfHearingReply', e.target.value)
+                            }
+                            required
+                          />
+                        </label>
+
+                        <div className="md:col-span-2">
+                          <label className="block text-sm font-medium text-gray-700">
+                            Upload Order of Proceeding
+                            <span className="ml-1 text-xs text-gray-500">(PDF, PNG, JPEG, JPG, Excel - Max 250 KB)</span>
+                          </label>
+                          <div className="mt-2 flex items-center gap-3">
+                            <input
+                              id={`order-of-proceeding-file-proceedings-reply-${index}`}
+                              type="file"
+                              accept=".pdf,.png,.jpeg,.jpg,.xlsx,.xls"
+                              className="block w-full text-sm text-gray-500 file:mr-4 file:rounded-md file:border-0 file:bg-indigo-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-indigo-700 hover:file:bg-indigo-100"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0]
+                                if (file) {
+                                  if (file.size > 250 * 1024) {
+                                    setError('File size exceeds 250 KB limit')
+                                    e.target.value = ''
+                                    return
+                                  }
+                                  const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel']
+                                  if (!allowedTypes.includes(file.type)) {
+                                    setError('Invalid file type. Only PDF, PNG, JPEG, JPG, and Excel files are allowed.')
+                                    e.target.value = ''
+                                    return
+                                  }
+                                  setNoticeOfMotionFiles(prev => {
+                                    const newMap = new Map(prev)
+                                    newMap.set(index, file)
+                                    return newMap
+                                  })
+                                  setError(null)
+                                }
+                              }}
+                            />
+                            {noticeOfMotionFiles.get(index) && (
+                              <div className="flex items-center gap-2 text-sm text-gray-600">
+                                <span>{noticeOfMotionFiles.get(index)?.name}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setNoticeOfMotionFiles(prev => {
+                                      const newMap = new Map(prev)
+                                      newMap.delete(index)
+                                      return newMap
+                                    })
+                                    const fileInput = document.getElementById(`order-of-proceeding-file-proceedings-reply-${index}`) as HTMLInputElement
+                                    if (fileInput) fileInput.value = ''
+                                  }}
+                                  className="text-red-600 hover:text-red-700"
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      addToFileReplyEntry()
+                    }}
+                    className="w-full rounded-md border-2 border-purple-500 px-4 py-2 text-sm font-medium text-purple-600 hover:bg-purple-50"
+                  >
+                    + ADD ANOTHER TO FILE REPLY ENTRY
+                  </button>
                 </div>
               )}
 
               {formData.type === 'ARGUMENT' && (
-                <div className="rounded-lg border-2 border-dashed border-gray-300 bg-white p-4">
-                  <h4 className="mb-3 text-sm font-semibold text-gray-700">Argument Entry</h4>
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <label className="md:col-span-2 text-sm font-medium text-gray-700">
-                      Argument details <span className="text-red-500 ml-1">*</span>
-                      <textarea
-                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-                        rows={3}
-                        value={formData.argumentDetails.details}
-                        onChange={(e) =>
-                          setFormData((prev) => ({
-                            ...prev,
-                            argumentDetails: {
-                              ...prev.argumentDetails,
-                              details: e.target.value,
-                            },
-                          }))
-                        }
-                        required
-                      />
-                    </label>
-                    <label className="text-sm font-medium text-gray-700">
-                      Next date of hearing <span className="text-red-500 ml-1">*</span>
-                      <input
-                        type="date"
-                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-                        value={formatDateInputValue(formData.argumentDetails.nextDateOfHearing)}
-                        onChange={(e) =>
-                          setFormData((prev) => ({
-                            ...prev,
-                            argumentDetails: {
-                              ...prev.argumentDetails,
-                              nextDateOfHearing: e.target.value,
-                            },
-                          }))
-                        }
-                        required
-                      />
-                    </label>
-                  </div>
+                <div className="space-y-4">
+                  {(formData.argumentDetails || []).map((entry, index) => (
+                    <div key={index} className="rounded-lg border-2 border-dashed border-gray-300 bg-white p-4">
+                      <div className="mb-4 flex items-center justify-between">
+                        <h4 className="text-sm font-semibold text-gray-700">
+                          {(formData.argumentDetails || []).length === 1 
+                            ? 'Argument Entry' 
+                            : `Argument Entry ${index + 1}`}
+                        </h4>
+                        {(formData.argumentDetails || []).length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeArgumentEntry(index)}
+                            className="text-xs font-medium text-red-600 hover:text-red-700"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <label className="md:col-span-2 text-sm font-medium text-gray-700">
+                          Argument by <span className="text-red-500 ml-1">*</span>
+                          <textarea
+                            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                            rows={3}
+                            value={entry.argumentBy || ''}
+                            onChange={(e) =>
+                              updateArgumentEntry(index, 'argumentBy', e.target.value)
+                            }
+                            required
+                          />
+                        </label>
+
+                        <label className="md:col-span-2 text-sm font-medium text-gray-700">
+                          Argument with <span className="text-red-500 ml-1">*</span>
+                          <textarea
+                            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                            rows={3}
+                            value={entry.argumentWith || ''}
+                            onChange={(e) =>
+                              updateArgumentEntry(index, 'argumentWith', e.target.value)
+                            }
+                            required
+                          />
+                        </label>
+
+                        <label className="text-sm font-medium text-gray-700">
+                          Next Date of Hearing <span className="text-red-500 ml-1">*</span>
+                          <input
+                            type="date"
+                            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                            value={formatDateInputValue(entry.nextDateOfHearing)}
+                            onChange={(e) =>
+                              updateArgumentEntry(index, 'nextDateOfHearing', e.target.value)
+                            }
+                            required
+                          />
+                        </label>
+
+                        <div className="flex items-end">
+                          <label className="block w-full text-sm font-medium text-gray-700">
+                            Upload Order of Proceeding
+                            <span className="ml-1 text-xs text-gray-500">(PDF, PNG, JPEG, JPG, Excel - Max 250 KB)</span>
+                            <input
+                              id={`argument-file-proceedings-${index}`}
+                              type="file"
+                              accept=".pdf,.png,.jpeg,.jpg,.xlsx,.xls"
+                              className="mt-2 block w-full text-sm text-gray-500 file:mr-4 file:rounded-md file:border-0 file:bg-indigo-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-indigo-700 hover:file:bg-indigo-100"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0]
+                                if (file) {
+                                  if (file.size > 250 * 1024) {
+                                    setError('File size must be less than 250 KB')
+                                    e.target.value = ''
+                                    return
+                                  }
+                                  const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel']
+                                  if (!allowedTypes.includes(file.type)) {
+                                    setError('Invalid file type. Only PDF, PNG, JPEG, JPG, and Excel files are allowed.')
+                                    e.target.value = ''
+                                    return
+                                  }
+                                  setNoticeOfMotionFiles(prev => {
+                                    const newMap = new Map(prev)
+                                    newMap.set(index, file)
+                                    return newMap
+                                  })
+                                  setError(null)
+                                }
+                              }}
+                            />
+                            {noticeOfMotionFiles.get(index) && (
+                              <div className="mt-2 flex items-center gap-2 text-sm text-gray-600">
+                                <span>{noticeOfMotionFiles.get(index)?.name}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setNoticeOfMotionFiles(prev => {
+                                      const newMap = new Map(prev)
+                                      newMap.delete(index)
+                                      return newMap
+                                    })
+                                    const fileInput = document.getElementById(`argument-file-proceedings-${index}`) as HTMLInputElement
+                                    if (fileInput) fileInput.value = ''
+                                  }}
+                                  className="text-red-600 hover:text-red-700"
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            )}
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      addArgumentEntry()
+                    }}
+                    className="w-full rounded-md border-2 border-purple-500 px-4 py-2 text-sm font-medium text-purple-600 hover:bg-purple-50"
+                  >
+                    + ADD ANOTHER ARGUMENT ENTRY
+                  </button>
                 </div>
               )}
             </div>
 
-            {/* Section 3: Decision Details */}
-            <div className="rounded-lg border border-gray-200 bg-gray-50 p-6 shadow-sm">
-              <h3 className="mb-4 text-lg font-semibold text-gray-900">Decision Details</h3>
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="text-sm font-medium text-gray-700">
-                  Writ status <span className="text-red-500 ml-1">*</span>
-                  <select
-                    className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-                    value={formData.decisionDetails.writStatus}
-                    onChange={(e) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        decisionDetails: {
-                          ...prev.decisionDetails,
-                          writStatus: e.target.value as WritStatus,
-                        },
-                      }))
-                    }
-                    required
-                  >
-                    {WritStatusOptions.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="text-sm font-medium text-gray-700">
-                  Date of Decision
-                  <input
-                    type="date"
-                    className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-                    value={formData.decisionDetails.dateOfDecision}
-                    onChange={(e) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        decisionDetails: {
-                          ...prev.decisionDetails,
-                          dateOfDecision: e.target.value,
-                        },
-                      }))
-                    }
-                  />
-                </label>
-
-                <label className="md:col-span-2 text-sm font-medium text-gray-700">
-                  Decision by Court
-                  <input
-                    type="text"
-                    className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-                    value={formData.decisionDetails.decisionByCourt}
-                    onChange={(e) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        decisionDetails: {
-                          ...prev.decisionDetails,
-                          decisionByCourt: e.target.value,
-                        },
-                      }))
-                    }
-                  />
-                </label>
-
-                <label className="md:col-span-2 text-sm font-medium text-gray-700">
-                  Remarks
-                  <textarea
-                    className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-                    rows={3}
-                    value={formData.decisionDetails.remarks}
-                    onChange={(e) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        decisionDetails: {
-                          ...prev.decisionDetails,
-                          remarks: e.target.value,
-                        },
-                      }))
-                    }
-                  />
-                </label>
-
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700">
-                    Upload Order of Proceeding
-                    <span className="ml-1 text-xs text-gray-500">(PDF, PNG, JPEG, JPG, Excel - Max 250 KB)</span>
-                  </label>
-                  <div className="mt-2 flex items-center gap-3">
-                    <input
-                      id="order-of-proceeding-file-proceedings"
-                      type="file"
-                      accept=".pdf,.png,.jpeg,.jpg,.xlsx,.xls"
-                      className="block w-full text-sm text-gray-500 file:mr-4 file:rounded-md file:border-0 file:bg-indigo-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-indigo-700 hover:file:bg-indigo-100"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0]
-                        if (file) {
-                          if (file.size > 250 * 1024) {
-                            setError('File size exceeds 250 KB limit')
-                            e.target.value = ''
-                            return
-                          }
-                          const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel']
-                          if (!allowedTypes.includes(file.type)) {
-                            setError('Invalid file type. Only PDF, PNG, JPEG, JPG, and Excel files are allowed.')
-                            e.target.value = ''
-                            return
-                          }
-                          setOrderOfProceedingFile(file)
-                          setError(null)
-                        }
-                      }}
-                    />
-                    {orderOfProceedingFile && (
-                      <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <span>{orderOfProceedingFile.name}</span>
+            {/* Section 3: Any Other */}
+            {formData.type === 'ANY_OTHER' && (
+              <div className="space-y-4">
+                {(formData.anyOtherDetails || []).map((entry, index) => (
+                  <div key={index} className="rounded-lg border-2 border-dashed border-gray-300 bg-white p-4">
+                    <div className="mb-4 flex items-center justify-between">
+                      <h4 className="text-sm font-semibold text-gray-700">
+                        {(formData.anyOtherDetails || []).length === 1 
+                          ? 'Any Other Entry' 
+                          : `Any Other Entry ${index + 1}`}
+                      </h4>
+                      {(formData.anyOtherDetails || []).length > 1 && (
                         <button
                           type="button"
-                          onClick={(e) => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                            setOrderOfProceedingFile(null)
-                            const fileInput = document.getElementById('order-of-proceeding-file-proceedings') as HTMLInputElement
-                            if (fileInput) fileInput.value = ''
-                          }}
-                          className="text-red-600 hover:text-red-700"
+                          onClick={() => removeAnyOtherEntry(index)}
+                          className="text-xs font-medium text-red-600 hover:text-red-700"
                         >
-                          ×
+                          Remove
                         </button>
+                      )}
+                    </div>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <label className="text-sm font-medium text-gray-700">
+                        Details of Officer who is attending <span className="text-red-500 ml-1">*</span>
+                        <input
+                          type="text"
+                          className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                          placeholder="Enter details of officer who is attending"
+                          value={entry.attendingOfficerDetails || ''}
+                          onChange={(e) =>
+                            updateAnyOtherEntry(index, 'attendingOfficerDetails', e.target.value)
+                          }
+                          required
+                        />
+                      </label>
+
+                      <label className="text-sm font-medium text-gray-700">
+                        Details of officer <span className="text-red-500 ml-1">*</span>
+                        <div className="mt-1 grid gap-2 md:grid-cols-3">
+                          <input
+                            type="text"
+                            className="rounded-md border border-gray-300 px-3 py-2"
+                            placeholder="Name *"
+                            value={entry.officerDetails?.name || ''}
+                            onChange={(e) =>
+                              updateAnyOtherPerson(index, 'officerDetails', 'name', e.target.value)
+                            }
+                            required
+                          />
+                          <input
+                            type="text"
+                            className="rounded-md border border-gray-300 px-3 py-2"
+                            placeholder="Rank *"
+                            value={entry.officerDetails?.rank || ''}
+                            onChange={(e) =>
+                              updateAnyOtherPerson(index, 'officerDetails', 'rank', e.target.value)
+                            }
+                            required
+                          />
+                          <input
+                            type="text"
+                            className="rounded-md border border-gray-300 px-3 py-2"
+                            placeholder="Mobile *"
+                            value={entry.officerDetails?.mobile || ''}
+                            onChange={(e) =>
+                              updateAnyOtherPerson(index, 'officerDetails', 'mobile', e.target.value)
+                            }
+                            required
+                          />
+                        </div>
+                      </label>
+
+                      <label className="text-sm font-medium text-gray-700">
+                        Details of AG who is appearing <span className="text-red-500 ml-1">*</span>
+                        <input
+                          type="text"
+                          className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                          placeholder="Enter details of AG who is appearing"
+                          value={entry.appearingAGDetails || ''}
+                          onChange={(e) =>
+                            updateAnyOtherEntry(index, 'appearingAGDetails', e.target.value)
+                          }
+                          required
+                        />
+                      </label>
+
+                      <label className="md:col-span-2 text-sm font-medium text-gray-700">
+                        Details of proceeding <span className="text-red-500 ml-1">*</span>
+                        <textarea
+                          className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                          rows={2}
+                          value={entry.details || ''}
+                          onChange={(e) =>
+                            updateAnyOtherEntry(index, 'details', e.target.value)
+                          }
+                          required
+                        />
+                      </label>
+
+                      <div className="md:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700">
+                          Upload Doc of Proceeding
+                          <span className="ml-1 text-xs text-gray-500">(PDF, PNG, JPEG, JPG, Excel - Max 250 KB)</span>
+                        </label>
+                        <div className="mt-2 flex items-center gap-3">
+                          <input
+                            id={`any-other-file-proceedings-${index}`}
+                            type="file"
+                            accept=".pdf,.png,.jpeg,.jpg,.xlsx,.xls"
+                            className="block w-full text-sm text-gray-500 file:mr-4 file:rounded-md file:border-0 file:bg-indigo-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-indigo-700 hover:file:bg-indigo-100"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0]
+                              if (file) {
+                                if (file.size > 250 * 1024) {
+                                  setError('File size must be less than 250 KB')
+                                  e.target.value = ''
+                                  return
+                                }
+                                const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel']
+                                if (!allowedTypes.includes(file.type)) {
+                                  setError('Invalid file type. Only PDF, PNG, JPEG, JPG, and Excel files are allowed.')
+                                  e.target.value = ''
+                                  return
+                                }
+                                setNoticeOfMotionFiles(prev => {
+                                  const newMap = new Map(prev)
+                                  newMap.set(index, file)
+                                  return newMap
+                                })
+                                setError(null)
+                              }
+                            }}
+                          />
+                          {noticeOfMotionFiles.get(index) && (
+                            <div className="flex items-center gap-2 text-sm text-gray-600">
+                              <span>{noticeOfMotionFiles.get(index)?.name}</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setNoticeOfMotionFiles(prev => {
+                                    const newMap = new Map(prev)
+                                    newMap.delete(index)
+                                    return newMap
+                                  })
+                                  const fileInput = document.getElementById(`any-other-file-proceedings-${index}`) as HTMLInputElement
+                                  if (fileInput) fileInput.value = ''
+                                }}
+                                className="text-red-600 hover:text-red-700"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    )}
+                    </div>
                   </div>
-                </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    addAnyOtherEntry()
+                  }}
+                  className="w-full rounded-md border-2 border-purple-500 px-4 py-2 text-sm font-medium text-purple-600 hover:bg-purple-50"
+                >
+                  + ADD ANOTHER ANY OTHER ENTRY
+                </button>
               </div>
-            </div>
+            )}
 
             <div className="flex items-center justify-between">
               <button
@@ -1727,25 +1959,19 @@ function StatCard({
 
 const PROCEEDING_TYPE_LABEL: Record<ProceedingType, string> = {
   NOTICE_OF_MOTION: 'Notice of Motion',
-  TO_FILE_REPLY: 'Reply Tracking',
+  TO_FILE_REPLY: 'To File Reply',
   ARGUMENT: 'Argument',
-  DECISION: 'Decision',
+  ANY_OTHER: 'Any Other',
 }
 
 const PROCEEDING_TYPE_OPTIONS = [
   { value: 'NOTICE_OF_MOTION', label: 'Notice of Motion' },
-  { value: 'TO_FILE_REPLY', label: 'Reply Tracking' },
+  { value: 'TO_FILE_REPLY', label: 'To File Reply' },
   { value: 'ARGUMENT', label: 'Argument' },
-  { value: 'DECISION', label: 'Decision' },
+  { value: 'ANY_OTHER', label: 'Any Other' },
 ]
 
-const WritStatusOptions = [
-  { value: 'ALLOWED', label: 'Allowed' },
-  { value: 'PENDING', label: 'Pending' },
-  { value: 'DISMISSED', label: 'Dismissed' },
-  { value: 'WITHDRAWN', label: 'Withdrawn' },
-  { value: 'DIRECTION', label: 'Direction' },
-]
+// Removed WritStatusOptions as it's no longer needed
 
 function formatDate(value?: string) {
   if (!value) return '—'

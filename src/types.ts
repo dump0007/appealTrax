@@ -121,7 +121,7 @@ export type ProceedingType =
   | 'NOTICE_OF_MOTION'
   | 'TO_FILE_REPLY'
   | 'ARGUMENT'
-  | 'DECISION'
+  | 'ANY_OTHER'
 
 export type CourtAttendanceMode = 'BY_FORMAT' | 'BY_PERSON'
 
@@ -143,9 +143,13 @@ export interface NoticeOfMotionDetails {
   attendanceMode: CourtAttendanceMode
   formatSubmitted?: boolean
   formatFilledBy?: PersonDetails
-  appearingAG?: PersonDetails
-  attendingOfficer?: PersonDetails
+  appearingAG?: PersonDetails // Legacy - for BY_PERSON mode (deprecated, use appearingAGDetails)
+  appearingAGDetails?: string // For BY_PERSON mode
+  aagDgWhoWillAppear?: string // For BY_FORMAT mode
+  attendingOfficer?: PersonDetails // Legacy - for BY_PERSON mode (deprecated, use attendingOfficerDetails)
+  attendingOfficerDetails?: string // For BY_PERSON mode
   investigatingOfficer?: PersonDetails
+  investigatingOfficerName?: string // For TO_FILE_REPLY mode - single name field
   nextDateOfHearing?: string
   details?: string // Details of proceeding
   officerDeputedForReply?: string
@@ -154,6 +158,11 @@ export interface NoticeOfMotionDetails {
   replyFilingDate?: string
   advocateGeneralName?: string
   replyScrutinizedByHC?: boolean
+  // ReplyTracking fields for TO_FILE_REPLY entries (per entry)
+  proceedingInCourt?: string
+  orderInShort?: string
+  nextActionablePoint?: string
+  nextDateOfHearingReply?: string // Next date of hearing for reply tracking
 }
 
 export interface ReplyTrackingDetails {
@@ -164,15 +173,23 @@ export interface ReplyTrackingDetails {
 }
 
 export interface ArgumentDetails {
-  details?: string
+  argumentBy?: string // Argument by
+  argumentWith?: string // Argument with
   nextDateOfHearing?: string
 }
 
+export interface AnyOtherDetails {
+  attendingOfficerDetails?: string // Details of Officer who is attending
+  officerDetails?: PersonDetails // Details of officer (Name, Rank, Mobile)
+  appearingAGDetails?: string // Details of AG who is appearing
+  details?: string // Details of proceeding
+}
+
 export interface DecisionDetails {
-  writStatus: WritStatus
-  remarks?: string
-  decisionByCourt?: string
-  dateOfDecision?: string
+  writStatus?: WritStatus // Writ status
+  dateOfDecision?: string // Date of Decision
+  decisionByCourt?: string // Decision by Court
+  remarks?: string // Remarks
 }
 
 export interface Proceeding {
@@ -185,8 +202,8 @@ export interface Proceeding {
   hearingDetails?: ProceedingHearingDetails
   noticeOfMotion?: NoticeOfMotionDetails | NoticeOfMotionDetails[] // Support both single and array
   replyTracking?: ReplyTrackingDetails
-  argumentDetails?: ArgumentDetails
-  decisionDetails?: DecisionDetails
+  argumentDetails?: ArgumentDetails | ArgumentDetails[] // Support both single and array
+  anyOtherDetails?: AnyOtherDetails[]
   createdBy?: string
   draft?: boolean
   attachments?: Array<{ fileName: string; fileUrl: string }>
@@ -203,7 +220,8 @@ export interface CreateProceedingInput {
   hearingDetails: ProceedingHearingDetails
   noticeOfMotion?: NoticeOfMotionDetails | NoticeOfMotionDetails[] // Support both single and array
   replyTracking?: ReplyTrackingDetails
-  argumentDetails?: ArgumentDetails
+  argumentDetails?: ArgumentDetails | ArgumentDetails[] // Support both single and array
+  anyOtherDetails?: AnyOtherDetails[]
   decisionDetails?: DecisionDetails
   createdBy?: string // Officer ID (optional - backend sets it from JWT token)
   draft?: boolean // Whether this is a draft proceeding

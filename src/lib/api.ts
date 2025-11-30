@@ -259,6 +259,9 @@ export async function createProceeding(payload: CreateProceedingInput, file?: Fi
   if (payload.argumentDetails) {
     formData.append('argumentDetails', JSON.stringify(payload.argumentDetails))
   }
+  if (payload.anyOtherDetails) {
+    formData.append('anyOtherDetails', JSON.stringify(payload.anyOtherDetails))
+  }
   if (payload.decisionDetails) {
     formData.append('decisionDetails', JSON.stringify(payload.decisionDetails))
   }
