@@ -31,7 +31,7 @@ export default function FIRDetail() {
       appearingAG: { name: '', rank: '', mobile: '' },
       attendingOfficer: { name: '', rank: '', mobile: '' },
       investigatingOfficer: { name: '', rank: '', mobile: '' },
-      nextDateOfHearing: '',
+      details: '',
       officerDeputedForReply: '',
       vettingOfficerDetails: '',
       replyFiled: false,
@@ -57,6 +57,7 @@ export default function FIRDetail() {
     },
   })
   const [orderOfProceedingFile, setOrderOfProceedingFile] = useState<File | null>(null)
+  const [noticeOfMotionFiles, setNoticeOfMotionFiles] = useState<Map<number, File>>(new Map())
 
   const formatDateInputValue = (value: string | Date | null | undefined): string => {
     if (!value) return ''
@@ -140,7 +141,7 @@ export default function FIRDetail() {
           appearingAG: { name: '', rank: '', mobile: '' },
           attendingOfficer: { name: '', rank: '', mobile: '' },
           investigatingOfficer: { name: '', rank: '', mobile: '' },
-          nextDateOfHearing: '',
+          details: '',
           officerDeputedForReply: '',
           vettingOfficerDetails: '',
           replyFiled: false,
@@ -157,6 +158,18 @@ export default function FIRDetail() {
       ...prev,
       noticeOfMotion: prev.noticeOfMotion.filter((_, i) => i !== index),
     }))
+    // Clean up file for removed entry and reindex remaining files
+    setNoticeOfMotionFiles(prev => {
+      const newMap = new Map<number, File>()
+      prev.forEach((file, idx) => {
+        if (idx < index) {
+          newMap.set(idx, file)
+        } else if (idx > index) {
+          newMap.set(idx - 1, file)
+        }
+      })
+      return newMap
+    })
   }
 
   function updateNoticeOfMotionEntry(index: number, field: keyof NoticeOfMotionDetails, value: any) {
@@ -604,7 +617,9 @@ export default function FIRDetail() {
                       <div key={index} className="rounded-lg border-2 border-dashed border-gray-300 bg-white p-4">
                         <div className="mb-4 flex items-center justify-between">
                           <h4 className="text-sm font-semibold text-gray-700">
-                            Notice of Motion Entry #{index + 1}
+                            {formData.noticeOfMotion.length === 1 
+                              ? 'Notice of Motion' 
+                              : `Notice of Motion #${index + 1}`}
                           </h4>
                           {formData.noticeOfMotion.length > 1 && (
                             <button
@@ -834,18 +849,129 @@ export default function FIRDetail() {
                               </label>
                             </>
                           )}
-                        <label className="md:col-span-2 text-sm font-medium text-gray-700">
-                          Next date of hearing <span className="text-red-500">*</span>
+                        <div className="md:col-span-2">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            {entry.attendanceMode === 'BY_FORMAT' 
+                              ? 'Upload Doc of Proceeding' 
+                              : 'Upload Files (Person)'}
+                          </label>
                           <input
-                            type="date"
+                            type="file"
+                            id={`notice-of-motion-file-firdetail-${index}`}
+                            accept=".pdf,.png,.jpeg,.jpg,.xlsx,.xls"
+                            className="block w-full text-sm text-gray-500 file:mr-4 file:rounded-md file:border-0 file:bg-indigo-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-indigo-700 hover:file:bg-indigo-100"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0]
+                              if (file) {
+                                const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel']
+                                if (!allowedTypes.includes(file.type)) {
+                                  setError('Invalid file type. Only PDF, PNG, JPEG, JPG, and Excel files are allowed.')
+                                  e.target.value = ''
+                                  return
+                                }
+                                if (file.size > 250 * 1024) {
+                                  setError('File size must be less than 250 KB')
+                                  e.target.value = ''
+                                  return
+                                }
+                                setNoticeOfMotionFiles(prev => {
+                                  const newMap = new Map(prev)
+                                  newMap.set(index, file)
+                                  return newMap
+                                })
+                                setError(null)
+                              }
+                            }}
+                          />
+                          {noticeOfMotionFiles.get(index) && (
+                            <div className="mt-2 flex items-center gap-2 text-sm text-gray-600">
+                              <span>{noticeOfMotionFiles.get(index)?.name}</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setNoticeOfMotionFiles(prev => {
+                                    const newMap = new Map(prev)
+                                    newMap.delete(index)
+                                    return newMap
+                                  })
+                                  const fileInput = document.getElementById(`notice-of-motion-file-firdetail-${index}`) as HTMLInputElement
+                                  if (fileInput) fileInput.value = ''
+                                }}
+                                className="text-red-600 hover:text-red-700"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        <label className="md:col-span-2 text-sm font-medium text-gray-700">
+                          Details of proceeding <span className="text-red-500">*</span>
+                          <textarea
                             className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-                            value={formatDateInputValue(entry.nextDateOfHearing)}
+                            rows={3}
+                            value={entry.details || ''}
                             onChange={(e) =>
-                              updateNoticeOfMotionEntry(index, 'nextDateOfHearing', e.target.value)
+                              updateNoticeOfMotionEntry(index, 'details', e.target.value)
                             }
                             required
+                            placeholder="Enter details of proceeding"
                           />
                         </label>
+                        <div className="md:col-span-2">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            {entry.attendanceMode === 'BY_FORMAT' 
+                              ? 'Upload Doc of Proceeding' 
+                              : 'Upload Files (Person)'}
+                          </label>
+                          <input
+                            type="file"
+                            id={`notice-of-motion-file-firdetail-${index}`}
+                            accept=".pdf,.png,.jpeg,.jpg,.xlsx,.xls"
+                            className="block w-full text-sm text-gray-500 file:mr-4 file:rounded-md file:border-0 file:bg-indigo-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-indigo-700 hover:file:bg-indigo-100"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0]
+                              if (file) {
+                                const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel']
+                                if (!allowedTypes.includes(file.type)) {
+                                  setError('Invalid file type. Only PDF, PNG, JPEG, JPG, and Excel files are allowed.')
+                                  e.target.value = ''
+                                  return
+                                }
+                                if (file.size > 250 * 1024) {
+                                  setError('File size must be less than 250 KB')
+                                  e.target.value = ''
+                                  return
+                                }
+                                setNoticeOfMotionFiles(prev => {
+                                  const newMap = new Map(prev)
+                                  newMap.set(index, file)
+                                  return newMap
+                                })
+                                setError(null)
+                              }
+                            }}
+                          />
+                          {noticeOfMotionFiles.get(index) && (
+                            <div className="mt-2 flex items-center gap-2 text-sm text-gray-600">
+                              <span>{noticeOfMotionFiles.get(index)?.name}</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setNoticeOfMotionFiles(prev => {
+                                    const newMap = new Map(prev)
+                                    newMap.delete(index)
+                                    return newMap
+                                  })
+                                  const fileInput = document.getElementById(`notice-of-motion-file-firdetail-${index}`) as HTMLInputElement
+                                  if (fileInput) fileInput.value = ''
+                                }}
+                                className="text-red-600 hover:text-red-700"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          )}
+                        </div>
                         </div>
                       </div>
                     ))}

@@ -147,6 +147,7 @@ export interface NoticeOfMotionDetails {
   attendingOfficer?: PersonDetails
   investigatingOfficer?: PersonDetails
   nextDateOfHearing?: string
+  details?: string // Details of proceeding
   officerDeputedForReply?: string
   vettingOfficerDetails?: string
   replyFiled?: boolean
