@@ -51,7 +51,7 @@ export type BailSubType = 'ANTICIPATORY' | 'REGULAR'
 
 export interface RespondentDetail {
   name: string
-  designation: string
+  designation?: string
 }
 
 export interface InvestigatingOfficerDetail {

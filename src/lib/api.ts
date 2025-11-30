@@ -203,6 +203,17 @@ export async function createFIR(payload: CreateFIRInput) {
   return data
 }
 
+export async function updateFIR(id: string, payload: CreateFIRInput) {
+  const data = await request<FIR>(`/v1/firs/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
+  // Invalidate cache
+  useApiCacheStore.getState().invalidateAllFirs()
+  useApiCacheStore.getState().invalidateFIR(id)
+  return data
+}
+
 // Proceeding endpoints
 export async function fetchAllProceedings() {
   const data = await request<Proceeding[]>('/v1/proceedings')

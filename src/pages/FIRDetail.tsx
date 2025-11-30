@@ -98,10 +98,14 @@ export default function FIRDetail() {
         setFir(data)
         setLocalProceedings(proceedingsData || [])
         // Pre-select the FIR in the form
-        setFormData((prev) => ({
-          ...prev,
-          fir: firId,
-        }))
+        // Reset proceeding type if ARGUMENT is selected but writ type is not QUASHING
+        setFormData((prev) => {
+          const newData = { ...prev, fir: firId }
+          if (data?.writType !== 'QUASHING' && prev.type === 'ARGUMENT') {
+            newData.type = 'NOTICE_OF_MOTION'
+          }
+          return newData
+        })
         setError(null)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Unable to load FIR')
@@ -568,30 +572,31 @@ export default function FIRDetail() {
                       required
                     />
                   </label>
-
-                  <label className="md:col-span-3 text-sm font-medium text-gray-700">
-                    <span className="text-red-500">*</span> Type of Proceeding
-                    <select
-                      className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-                      value={formData.type}
-                      onChange={(e) =>
-                        setFormData((prev) => ({ ...prev, type: e.target.value as ProceedingType }))
-                      }
-                      required
-                    >
-                      {PROCEEDING_TYPE_OPTIONS.map((opt) => (
-                        <option key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
                 </div>
               </div>
 
               {/* Section 2: Type of Proceeding */}
               <div className="rounded-lg border border-gray-200 bg-gray-50 p-6 shadow-sm">
                 <h3 className="mb-4 text-lg font-semibold text-gray-900">Type of Proceeding</h3>
+                <label className="mb-4 block text-sm font-medium text-gray-700">
+                  Select Type <span className="text-red-500 ml-1">*</span>
+                  <select
+                    className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                    value={formData.type}
+                    onChange={(e) =>
+                      setFormData((prev) => ({ ...prev, type: e.target.value as ProceedingType }))
+                    }
+                    required
+                  >
+                    {PROCEEDING_TYPE_OPTIONS.filter((opt) => 
+                      opt.value !== 'ARGUMENT' || fir?.writType === 'QUASHING'
+                    ).map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
 
                 {formData.type === 'NOTICE_OF_MOTION' && (
                   <div className="space-y-6">

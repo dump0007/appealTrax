@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { createFIR, createProceeding, fetchDraftProceedingByFIR, fetchFIRs } from '../lib/api'
+import { createFIR, createProceeding, fetchDraftProceedingByFIR, fetchFIRDetail, fetchFIRs, fetchProceedingsByFIR, updateFIR } from '../lib/api'
 import { useApiCacheStore } from '../store'
 import type { BailSubType, CreateFIRInput, CreateProceedingInput, FIR, FIRStatus, InvestigatingOfficerDetail, RespondentDetail, WritType, ProceedingType, CourtAttendanceMode, WritStatus, NoticeOfMotionDetails } from '../types'
 
@@ -74,6 +74,7 @@ export default function FIRs() {
   const [currentStep, setCurrentStep] = useState<1 | 2>(1)
   const [createdFIRId, setCreatedFIRId] = useState<string | null>(null)
   const [firsWithDrafts, setFirsWithDrafts] = useState<Set<string>>(new Set())
+  const [isResumingIncomplete, setIsResumingIncomplete] = useState(false)
   const [proceedingFormData, setProceedingFormData] = useState({
     type: 'NOTICE_OF_MOTION' as ProceedingType,
     summary: '',
@@ -137,6 +138,13 @@ export default function FIRs() {
       setSearchParams(newSearchParams, { replace: true })
     }
   }, [searchParams, setSearchParams])
+
+  // Reset proceeding type if ARGUMENT is selected but writ type is not QUASHING
+  useEffect(() => {
+    if (proceedingFormData.type === 'ARGUMENT' && formData.writType !== 'QUASHING') {
+      setProceedingFormData((prev) => ({ ...prev, type: 'NOTICE_OF_MOTION' }))
+    }
+  }, [formData.writType, proceedingFormData.type])
 
   useEffect(() => {
     async function load() {
@@ -319,9 +327,215 @@ export default function FIRs() {
       
       setCreatedFIRId(firId)
       setCurrentStep(2)
+      setIsResumingIncomplete(false) // Draft resume, not incomplete
       setFormOpen(true)
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Failed to load draft')
+    } finally {
+      setFormSubmitting(false)
+    }
+  }
+
+  async function handleResumeIncompleteForm(firId: string) {
+    try {
+      setFormSubmitting(true)
+      setFormError(null)
+      
+      // Fetch the FIR
+      const fir = await fetchFIRDetail(firId)
+      if (!fir) {
+        setFormError('FIR not found')
+        return
+      }
+      
+      // Check if FIR has any completed proceedings
+      const proceedings = await fetchProceedingsByFIR(firId)
+      const hasCompletedProceedings = proceedings && proceedings.length > 0 && 
+        proceedings.some(p => !p.draft)
+      
+      // If it has completed proceedings, just navigate to detail page
+      if (hasCompletedProceedings) {
+        navigate(`/firs/${firId}`)
+        return
+      }
+      
+      // Load FIR data into step 1 form
+      setFormData({
+        firNumber: fir.firNumber,
+        branchName: fir.branchName || '',
+        writNumber: fir.writNumber || '',
+        writType: fir.writType,
+        writYear: fir.writYear || CURRENT_YEAR,
+        writSubType: fir.writSubType || undefined,
+        writTypeOther: fir.writTypeOther || '',
+        underSection: fir.underSection || '',
+        act: fir.act || '',
+        policeStation: fir.policeStation || '',
+        dateOfFIR: fir.dateOfFIR ? new Date(fir.dateOfFIR).toISOString().split('T')[0] : '',
+        sections: fir.sections || [],
+        investigatingOfficers: fir.investigatingOfficers && fir.investigatingOfficers.length > 0 
+          ? fir.investigatingOfficers.map(io => ({
+              name: io.name || '',
+              rank: io.rank || '',
+              posting: io.posting || '',
+              contact: io.contact || 0,
+              from: io.from ? new Date(io.from).toISOString().split('T')[0] : '',
+              to: io.to ? new Date(io.to).toISOString().split('T')[0] : '',
+            }))
+          : [{ ...EMPTY_IO }],
+        petitionerName: fir.petitionerName || '',
+        petitionerFatherName: fir.petitionerFatherName || '',
+        petitionerAddress: fir.petitionerAddress || '',
+        petitionerPrayer: fir.petitionerPrayer || '',
+        respondents: (fir.respondents && Array.isArray(fir.respondents) 
+          ? fir.respondents.filter(r => typeof r === 'object' && r !== null).map(r => ({
+              name: (r as RespondentDetail).name || '',
+              designation: (r as RespondentDetail).designation || '',
+            }))
+          : [{ ...EMPTY_RESPONDENT }]),
+        status: fir.status as FIRStatus,
+        linkedWrits: [],
+      })
+      
+      // Check for draft proceeding
+      const draft = await fetchDraftProceedingByFIR(firId)
+      if (draft && draft.hearingDetails) {
+        // Load draft proceeding data
+        let noticeOfMotionArray: NoticeOfMotionDetails[] = []
+        const normalizePerson = (person?: { name?: string | null; rank?: string | null; mobile?: string | null } | null) => ({
+          name: person?.name || '',
+          rank: person?.rank || '',
+          mobile: person?.mobile || '',
+        })
+        const normalizeInvestigatingOfficer = (nom: any) => {
+          if (nom?.investigatingOfficer) {
+            return normalizePerson(nom.investigatingOfficer)
+          }
+          if (nom?.investigatingOfficerName) {
+            return {
+              name: nom.investigatingOfficerName || '',
+              rank: '',
+              mobile: '',
+            }
+          }
+          return { name: '', rank: '', mobile: '' }
+        }
+
+        if (draft.noticeOfMotion) {
+          if (Array.isArray(draft.noticeOfMotion)) {
+            noticeOfMotionArray = draft.noticeOfMotion.map(nom => ({
+              attendanceMode: nom.attendanceMode || 'BY_FORMAT',
+              formatSubmitted: nom.formatSubmitted || false,
+              formatFilledBy: normalizePerson(nom.formatFilledBy),
+              appearingAG: normalizePerson(nom.appearingAG),
+              attendingOfficer: normalizePerson(nom.attendingOfficer),
+              investigatingOfficer: normalizeInvestigatingOfficer(nom),
+              nextDateOfHearing: formatDateInputValue(nom.nextDateOfHearing),
+              officerDeputedForReply: nom.officerDeputedForReply || '',
+              vettingOfficerDetails: nom.vettingOfficerDetails || '',
+              replyFiled: nom.replyFiled || false,
+              replyFilingDate: nom.replyFilingDate || '',
+              advocateGeneralName: nom.advocateGeneralName || '',
+              replyScrutinizedByHC: nom.replyScrutinizedByHC || false,
+            }))
+          } else {
+            const nom = draft.noticeOfMotion
+            noticeOfMotionArray = [{
+              attendanceMode: nom.attendanceMode || 'BY_FORMAT',
+              formatSubmitted: nom.formatSubmitted || false,
+              formatFilledBy: normalizePerson(nom.formatFilledBy),
+              appearingAG: normalizePerson(nom.appearingAG),
+              attendingOfficer: normalizePerson(nom.attendingOfficer),
+              investigatingOfficer: normalizeInvestigatingOfficer(nom),
+              nextDateOfHearing: formatDateInputValue(nom.nextDateOfHearing),
+              officerDeputedForReply: nom.officerDeputedForReply || '',
+              vettingOfficerDetails: nom.vettingOfficerDetails || '',
+              replyFiled: nom.replyFiled || false,
+              replyFilingDate: nom.replyFilingDate || '',
+              advocateGeneralName: nom.advocateGeneralName || '',
+              replyScrutinizedByHC: nom.replyScrutinizedByHC || false,
+            }]
+          }
+        }
+
+        setProceedingFormData({
+          type: draft.type,
+          summary: draft.summary || '',
+          details: draft.details || '',
+          hearingDetails: {
+            dateOfHearing: draft.hearingDetails.dateOfHearing ? new Date(draft.hearingDetails.dateOfHearing).toISOString().split('T')[0] : '',
+            judgeName: draft.hearingDetails.judgeName || '',
+            courtNumber: draft.hearingDetails.courtNumber || '',
+          },
+          noticeOfMotion: noticeOfMotionArray.length > 0 ? noticeOfMotionArray : proceedingFormData.noticeOfMotion,
+          replyTracking: draft.replyTracking ? {
+            proceedingInCourt: draft.replyTracking.proceedingInCourt || '',
+            orderInShort: draft.replyTracking.orderInShort || '',
+            nextActionablePoint: draft.replyTracking.nextActionablePoint || '',
+            nextDateOfHearing: draft.replyTracking.nextDateOfHearing || '',
+          } : proceedingFormData.replyTracking,
+          argumentDetails: draft.argumentDetails ? {
+            details: draft.argumentDetails.details || '',
+            nextDateOfHearing: draft.argumentDetails.nextDateOfHearing || '',
+          } : proceedingFormData.argumentDetails,
+          decisionDetails: draft.decisionDetails ? {
+            writStatus: draft.decisionDetails.writStatus || 'PENDING',
+            remarks: draft.decisionDetails.remarks || '',
+            decisionByCourt: draft.decisionDetails.decisionByCourt || '',
+            dateOfDecision: draft.decisionDetails.dateOfDecision || '',
+          } : proceedingFormData.decisionDetails,
+        })
+      } else {
+        // Initialize step 2 with default values
+        setProceedingFormData({
+          type: 'NOTICE_OF_MOTION' as ProceedingType,
+          summary: '',
+          details: '',
+          hearingDetails: {
+            dateOfHearing: fir.dateOfFIR ? new Date(fir.dateOfFIR).toISOString().split('T')[0] : '',
+            judgeName: '',
+            courtNumber: '',
+          },
+          noticeOfMotion: [{
+            attendanceMode: 'BY_FORMAT' as CourtAttendanceMode,
+            formatSubmitted: false,
+            formatFilledBy: { name: '', rank: '', mobile: '' },
+            appearingAG: { name: '', rank: '', mobile: '' },
+            attendingOfficer: { name: '', rank: '', mobile: '' },
+            investigatingOfficer: { name: '', rank: '', mobile: '' },
+            nextDateOfHearing: '',
+            officerDeputedForReply: '',
+            vettingOfficerDetails: '',
+            replyFiled: false,
+            replyFilingDate: '',
+            advocateGeneralName: '',
+            replyScrutinizedByHC: false,
+          }] as NoticeOfMotionDetails[],
+          replyTracking: {
+            proceedingInCourt: '',
+            orderInShort: '',
+            nextActionablePoint: '',
+            nextDateOfHearing: '',
+          },
+          argumentDetails: {
+            details: '',
+            nextDateOfHearing: '',
+          },
+          decisionDetails: {
+            writStatus: 'PENDING' as WritStatus,
+            remarks: '',
+            decisionByCourt: '',
+            dateOfDecision: '',
+          },
+        })
+      }
+      
+      setCreatedFIRId(firId)
+      setCurrentStep(2) // Open to step 2 since step 1 is already complete
+      setIsResumingIncomplete(true) // Mark as resuming incomplete form
+      setFormOpen(true)
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Failed to load incomplete form')
     } finally {
       setFormSubmitting(false)
     }
@@ -413,12 +627,12 @@ export default function FIRs() {
       const respondents = formData.respondents
         .map((r) => ({
           name: r.name.trim(),
-          designation: r.designation.trim(),
+          designation: r.designation ? r.designation.trim() : '',
         }))
-        .filter((r) => r.name && r.designation)
+        .filter((r) => r.name)
 
       if (respondents.length === 0) {
-        setFormError('Please provide at least one respondent with name and designation.')
+        setFormError('Please provide at least one respondent with name.')
         setFormSubmitting(false)
         return
       }
@@ -456,25 +670,33 @@ export default function FIRs() {
         // description: '', // Commented out - using petitionerPrayer instead
       }
 
-      const newFIR = await createFIR(payload)
-      // Cache is invalidated by createFIR, so fetch fresh list
+      let updatedFIR: FIR
+      if (createdFIRId) {
+        // Update existing FIR
+        updatedFIR = await updateFIR(createdFIRId, payload)
+      } else {
+        // Create new FIR
+        updatedFIR = await createFIR(payload)
+        setCreatedFIRId(updatedFIR._id)
+      }
+      
+      // Cache is invalidated by createFIR/updateFIR, so fetch fresh list
       const freshData = await fetchFIRs()
       setFirs(freshData)
       
-      // Move to Step 2 with the created FIR ID
-      if (newFIR && newFIR._id) {
-        setCreatedFIRId(newFIR._id)
+      // Move to Step 2 with the FIR ID
+      if (updatedFIR && updatedFIR._id) {
         setCurrentStep(2)
-        // Pre-fill proceeding form with FIR date
+        // Pre-fill proceeding form with FIR date if not already set
         setProceedingFormData(prev => ({
           ...prev,
           hearingDetails: {
             ...prev.hearingDetails,
-            dateOfHearing: formData.dateOfFIR || '',
+            dateOfHearing: prev.hearingDetails.dateOfHearing || formData.dateOfFIR || '',
           },
         }))
       } else {
-        setFormError('FIR created but could not proceed to next step. Please create proceeding manually.')
+        setFormError('FIR saved but could not proceed to next step. Please create proceeding manually.')
         setFormData(createInitialForm())
         setFormOpen(false)
       }
@@ -591,8 +813,9 @@ export default function FIRs() {
 
       await createProceeding(payload, orderOfProceedingFile || undefined)
       // Reset everything and close form
-      setFormData(createInitialForm())
-      setProceedingFormData({
+        setFormData(createInitialForm())
+        setIsResumingIncomplete(false)
+        setProceedingFormData({
         type: 'NOTICE_OF_MOTION',
         summary: '',
         details: '',
@@ -631,6 +854,7 @@ export default function FIRs() {
       })
       setOrderOfProceedingFile(null)
       setCreatedFIRId(null)
+      setIsResumingIncomplete(false)
       setCurrentStep(1)
       setFormOpen(false)
       // Refresh FIRs list
@@ -643,7 +867,51 @@ export default function FIRs() {
     }
   }
 
-  function handleBackToStep1() {
+  async function handleBackToStep1() {
+    if (createdFIRId) {
+      try {
+        // Load the FIR data to populate step 1 form
+        const fir = await fetchFIRDetail(createdFIRId)
+        setFormData({
+          firNumber: fir.firNumber,
+          branchName: fir.branchName || '',
+          writNumber: fir.writNumber || '',
+          writType: fir.writType,
+          writYear: fir.writYear || CURRENT_YEAR,
+          writSubType: fir.writSubType || undefined,
+          writTypeOther: fir.writTypeOther || '',
+          underSection: fir.underSection || '',
+          act: fir.act || '',
+          policeStation: fir.policeStation || '',
+          dateOfFIR: fir.dateOfFIR ? new Date(fir.dateOfFIR).toISOString().split('T')[0] : '',
+          sections: fir.sections || [],
+          investigatingOfficers: fir.investigatingOfficers && fir.investigatingOfficers.length > 0 
+            ? fir.investigatingOfficers.map(io => ({
+                name: io.name || '',
+                rank: io.rank || '',
+                posting: io.posting || '',
+                contact: io.contact || 0,
+                from: io.from ? new Date(io.from).toISOString().split('T')[0] : '',
+                to: io.to ? new Date(io.to).toISOString().split('T')[0] : '',
+              }))
+            : [{ ...EMPTY_IO }],
+          petitionerName: fir.petitionerName || '',
+          petitionerFatherName: fir.petitionerFatherName || '',
+          petitionerAddress: fir.petitionerAddress || '',
+          petitionerPrayer: fir.petitionerPrayer || '',
+          respondents: (fir.respondents && Array.isArray(fir.respondents) 
+            ? fir.respondents.filter(r => typeof r === 'object' && r !== null).map(r => ({
+                name: (r as RespondentDetail).name || '',
+                designation: (r as RespondentDetail).designation || '',
+              }))
+            : [{ ...EMPTY_RESPONDENT }]),
+          status: fir.status as FIRStatus,
+          linkedWrits: [],
+        })
+      } catch (err) {
+        setFormError(err instanceof Error ? err.message : 'Failed to load FIR data')
+      }
+    }
     setCurrentStep(1)
   }
 
@@ -730,6 +998,24 @@ export default function FIRs() {
 
       {formOpen && (
         <section className="rounded-xl border bg-white p-6">
+          {/* Incomplete Form Prompt */}
+          {isResumingIncomplete && (
+            <div className="mb-6 rounded-lg border-2 border-amber-300 bg-amber-50 p-4">
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-amber-600" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-sm font-semibold text-amber-800">Incomplete Form</h3>
+                  <p className="mt-1 text-sm text-amber-700">
+                    This writ application was started but not completed. Please review the information below and complete Step 2 to finalize the application.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
           {/* Step Indicator */}
           <div className="mb-6 flex items-center justify-center gap-4">
             <div className="flex items-center gap-2">
@@ -852,14 +1138,6 @@ export default function FIRs() {
                     </select>
                   </label>
                 )}
-                {formData.writType === 'ANY_OTHER' && (
-                  <TextField
-                    label="Specify Writ Type"
-                    value={formData.writTypeOther || ''}
-                    onChange={(value) => handleInputChange('writTypeOther', value)}
-                    required
-                  />
-                )}
               </div>
             </div>
 
@@ -921,7 +1199,9 @@ export default function FIRs() {
                 <div key={index} className="mt-4 rounded-lg border border-gray-300 bg-gray-50 p-4">
                   <div className="mb-2 flex items-center justify-between">
                     <span className="text-sm font-medium text-gray-700">
-                      Investigating Officer {index + 1}
+                      {formData.investigatingOfficers.length === 1 
+                        ? 'Investigating Officer' 
+                        : `Investigating Officer ${index + 1}`}
                     </span>
                     {formData.investigatingOfficers.length > 1 && (
                       <button
@@ -1014,7 +1294,7 @@ export default function FIRs() {
                 />
               </label>
               <label className="mt-4 block text-sm font-medium text-gray-700">
-                Prayer<span className="text-red-500 ml-1">*</span>
+                Prayer (In brief)<span className="text-red-500 ml-1">*</span>
                 <textarea
                   className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
                   rows={3}
@@ -1048,7 +1328,11 @@ export default function FIRs() {
                     className="rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700"
                   >
                     <div className="flex items-center justify-between">
-                      <span className="font-semibold text-gray-900">Respondent #{index + 1}</span>
+                      <span className="font-semibold text-gray-900">
+                        {formData.respondents.length === 1 
+                          ? 'Respondent' 
+                          : `Respondent #${index + 1}`}
+                      </span>
                       {formData.respondents.length > 1 && (
                         <button
                           type="button"
@@ -1061,7 +1345,7 @@ export default function FIRs() {
                     </div>
                     <div className="mt-3 grid gap-3 md:grid-cols-2">
                       <label className="text-sm font-medium text-gray-700">
-                        Name<span className="text-red-500 ml-1">*</span>
+                        Respondent Name<span className="text-red-500 ml-1">*</span>
                         <input
                           type="text"
                           className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
@@ -1071,13 +1355,12 @@ export default function FIRs() {
                         />
                       </label>
                       <label className="text-sm font-medium text-gray-700">
-                        Designation<span className="text-red-500 ml-1">*</span>
+                        Respondent Designation
                         <input
                           type="text"
                           className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
                           value={respondent.designation}
                           onChange={(e) => updateRespondent(index, 'designation', e.target.value)}
-                          required
                         />
                       </label>
                     </div>
@@ -1214,7 +1497,9 @@ export default function FIRs() {
                     >
                       <option value="NOTICE_OF_MOTION">Notice of Motion</option>
                       <option value="TO_FILE_REPLY">Reply Tracking</option>
-                      <option value="ARGUMENT">Argument</option>
+                      {formData.writType === 'QUASHING' && (
+                        <option value="ARGUMENT">Argument</option>
+                      )}
                       <option value="DECISION">Decision</option>
                     </select>
                   </label>
@@ -1772,11 +2057,26 @@ export default function FIRs() {
                   <tr
                     key={fir._id}
                     className={`cursor-pointer transition ${hasDraft ? 'hover:bg-amber-50' : 'hover:bg-indigo-50'}`}
-                    onClick={() => {
+                    onClick={async () => {
                       if (hasDraft) {
                         handleResumeDraft(fir._id)
                       } else {
-                        navigate(`/firs/${fir._id}`)
+                        // Check if FIR has no completed proceedings - if so, resume form
+                        try {
+                          const proceedings = await fetchProceedingsByFIR(fir._id)
+                          const hasCompletedProceedings = proceedings && proceedings.length > 0 && 
+                            proceedings.some(p => !p.draft)
+                          if (!hasCompletedProceedings) {
+                            // No completed proceedings - resume the form
+                            handleResumeIncompleteForm(fir._id)
+                          } else {
+                            // Has completed proceedings - navigate to detail page
+                            navigate(`/firs/${fir._id}`)
+                          }
+                        } catch {
+                          // On error, just navigate to detail page
+                          navigate(`/firs/${fir._id}`)
+                        }
                       }
                     }}
                   >

@@ -168,6 +168,17 @@ export default function Proceedings() {
     return () => clearTimeout(searchDelay)
   }, [firSearchQuery, firs, firsWithDrafts])
 
+  // Reset proceeding type if ARGUMENT is selected but selected FIR's writ type is not QUASHING
+  useEffect(() => {
+    if (formData.type === 'ARGUMENT' && formData.fir) {
+      const selectedFir = firs.find((f) => f._id === formData.fir) || 
+                          firSearchResults.find((f) => f._id === formData.fir)
+      if (selectedFir?.writType !== 'QUASHING') {
+        setFormData((prev) => ({ ...prev, type: 'NOTICE_OF_MOTION' }))
+      }
+    }
+  }, [formData.fir, formData.type, firs, firSearchResults])
+
   const upcomingHearings = useMemo(() => {
     const now = new Date()
     const latestByFIR = new Map<string, Proceeding>()
@@ -787,11 +798,20 @@ export default function Proceedings() {
                   }
                   required
                 >
-                  {PROCEEDING_TYPE_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
+                  {(() => {
+                    const selectedFir = formData.fir 
+                      ? (firs.find((f) => f._id === formData.fir) || 
+                         firSearchResults.find((f) => f._id === formData.fir))
+                      : null
+                    const isQuashing = selectedFir?.writType === 'QUASHING'
+                    return PROCEEDING_TYPE_OPTIONS.filter((opt) => 
+                      opt.value !== 'ARGUMENT' || isQuashing
+                    ).map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))
+                  })()}
                 </select>
               </label>
 
