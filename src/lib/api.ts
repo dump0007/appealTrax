@@ -229,6 +229,11 @@ export async function fetchProceedingsByFIR(firId: string) {
   return data
 }
 
+export async function fetchProceedingDetail(proceedingId: string) {
+  const data = await request<Proceeding>(`/v1/proceedings/${proceedingId}`)
+  return data
+}
+
 export async function fetchDraftProceedingByFIR(firId: string) {
   const data = await request<Proceeding | null>(`/v1/proceedings/fir/${firId}/draft`)
   return data

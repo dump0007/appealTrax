@@ -751,9 +751,10 @@ export default function Proceedings() {
               return (
                 <div
                   key={proceeding._id}
-                  className={`rounded-lg border p-4 transition hover:shadow-md ${
+                  className={`cursor-pointer rounded-lg border p-4 transition hover:shadow-md ${
                     isUrgent ? 'border-amber-300 bg-amber-50/50' : 'border-gray-200 bg-gray-50/50'
                   }`}
+                  onClick={() => navigate(`/proceedings/${proceeding._id}`, { state: { from: 'proceedings-list' } })}
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="flex-1">
@@ -2040,7 +2041,7 @@ export default function Proceedings() {
                 <div
                   key={proceeding._id}
                   className="cursor-pointer rounded-lg border border-gray-200 p-4 transition hover:bg-gray-50 hover:shadow-sm"
-                  onClick={() => fir && navigate(`/firs/${fir._id}`)}
+                  onClick={() => navigate(`/proceedings/${proceeding._id}`, { state: { from: 'proceedings-list' } })}
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="flex-1">

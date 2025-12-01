@@ -7,6 +7,7 @@ import Dashboard from './pages/Dashboard'
 import FIRs from './pages/FIRs'
 import FIRDetail from './pages/FIRDetail'
 import Proceedings from './pages/Proceedings'
+import ProceedingDetail from './pages/ProceedingDetail'
 import NotFound from './pages/NotFound'
 
 export default function App() {
@@ -28,6 +29,7 @@ export default function App() {
         <Route path="firs" element={<FIRs />} />
         <Route path="firs/:firId" element={<FIRDetail />} />
         <Route path="proceedings" element={<Proceedings />} />
+        <Route path="proceedings/:proceedingId" element={<ProceedingDetail />} />
       </Route>
       <Route path="*" element={<NotFound />} />
     </Routes>

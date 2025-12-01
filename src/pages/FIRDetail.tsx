@@ -939,7 +939,10 @@ export default function FIRDetail() {
                       <div className="h-full w-px bg-gray-200" />
                     )}
                   </div>
-                  <div className="flex-1 rounded-lg border bg-white p-4 shadow-sm">
+                  <div 
+                    className="flex-1 cursor-pointer rounded-lg border bg-white p-4 shadow-sm transition hover:bg-gray-50 hover:shadow-md"
+                    onClick={() => navigate(`/proceedings/${item._id}`, { state: { from: 'writ', firId } })}
+                  >
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="text-sm font-semibold text-gray-800">
                         {PROCEEDING_TYPE_LABEL[item.type] || item.type}

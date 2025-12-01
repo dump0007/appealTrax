@@ -212,6 +212,7 @@ export interface Proceeding {
   replyTracking?: ReplyTrackingDetails | ReplyTrackingDetails[] // Support both single and array for TO_FILE_REPLY
   argumentDetails?: ArgumentDetails | ArgumentDetails[] // Support both single and array
   anyOtherDetails?: AnyOtherDetails[]
+  decisionDetails?: DecisionDetails
   createdBy?: string
   draft?: boolean
   attachments?: Array<{ fileName: string; fileUrl: string }>
