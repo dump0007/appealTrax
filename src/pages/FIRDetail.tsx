@@ -3,7 +3,24 @@ import type { ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { createProceeding, fetchFIRDetail, fetchProceedingsByFIR, fetchDraftProceedingByFIR } from '../lib/api'
 import { useAuthStore, useApiCacheStore } from '../store'
-import type { FIR, Proceeding, ProceedingType, CourtAttendanceMode, CreateProceedingInput, NoticeOfMotionDetails, AnyOtherDetails, PersonDetails, WritStatus } from '../types'
+import type { FIR, Proceeding, ProceedingType, CourtAttendanceMode, CreateProceedingInput, NoticeOfMotionDetails, AnyOtherDetails, PersonDetails, WritStatus, ReplyTrackingDetails } from '../types'
+
+// Helper function to convert NoticeOfMotionDetails to ReplyTrackingDetails for TO_FILE_REPLY
+function convertToReplyTracking(entry: NoticeOfMotionDetails): ReplyTrackingDetails {
+  return {
+    officerDeputedForReply: entry.officerDeputedForReply,
+    vettingOfficerDetails: entry.vettingOfficerDetails,
+    replyFiled: entry.replyFiled,
+    replyFilingDate: entry.replyFilingDate,
+    advocateGeneralName: entry.advocateGeneralName,
+    replyScrutinizedByHC: entry.replyScrutinizedByHC,
+    investigatingOfficerName: entry.investigatingOfficerName,
+    proceedingInCourt: entry.proceedingInCourt,
+    orderInShort: entry.orderInShort,
+    nextActionablePoint: entry.nextActionablePoint,
+    nextDateOfHearingReply: entry.nextDateOfHearingReply,
+  }
+}
 
 export default function FIRDetail() {
   const { firId } = useParams<{ firId: string }>()
@@ -71,6 +88,10 @@ export default function FIRDetail() {
   })
   const [orderOfProceedingFile, setOrderOfProceedingFile] = useState<File | null>(null)
   const [noticeOfMotionFiles, setNoticeOfMotionFiles] = useState<Map<number, File>>(new Map())
+  const [replyTrackingFiles, setReplyTrackingFiles] = useState<Map<number, File>>(new Map())
+  const [argumentFiles, setArgumentFiles] = useState<Map<number, File>>(new Map())
+  const [anyOtherFiles, setAnyOtherFiles] = useState<Map<number, File>>(new Map())
+  const [decisionDetailsFile, setDecisionDetailsFile] = useState<File | null>(null)
   const [isResumingIncomplete, setIsResumingIncomplete] = useState(false)
 
   const formatDateInputValue = (value: string | Date | null | undefined): string => {
@@ -153,50 +174,107 @@ export default function FIRDetail() {
               }
               
               let noticeOfMotionArray: NoticeOfMotionDetails[] = []
-              if (draft.noticeOfMotion) {
+              // For TO_FILE_REPLY, data is in replyTracking; for NOTICE_OF_MOTION, it's in noticeOfMotion
+              if (draft.type === 'TO_FILE_REPLY' && draft.replyTracking) {
+                if (Array.isArray(draft.replyTracking)) {
+                  noticeOfMotionArray = draft.replyTracking.map((rt: any) => ({
+                    attendanceMode: 'BY_FORMAT' as CourtAttendanceMode, // Dummy value for form state (not used for TO_FILE_REPLY)
+                    formatSubmitted: undefined,
+                    formatFilledBy: undefined,
+                    appearingAG: undefined,
+                    appearingAGDetails: undefined,
+                    aagDgWhoWillAppear: undefined,
+                    attendingOfficer: undefined,
+                    attendingOfficerDetails: undefined,
+                    investigatingOfficer: undefined,
+                    details: '',
+                    officerDeputedForReply: rt.officerDeputedForReply || '',
+                    vettingOfficerDetails: rt.vettingOfficerDetails || '',
+                    replyFiled: rt.replyFiled || false,
+                    replyFilingDate: rt.replyFilingDate ? formatDateInputValue(rt.replyFilingDate) : '',
+                    advocateGeneralName: rt.advocateGeneralName || '',
+                    replyScrutinizedByHC: rt.replyScrutinizedByHC || false,
+                    investigatingOfficerName: rt.investigatingOfficerName || '',
+                    proceedingInCourt: rt.proceedingInCourt || '',
+                    orderInShort: rt.orderInShort || '',
+                    nextActionablePoint: rt.nextActionablePoint || '',
+                    nextDateOfHearingReply: rt.nextDateOfHearingReply ? formatDateInputValue(rt.nextDateOfHearingReply) : '',
+                  }))
+                } else {
+                  const rt = draft.replyTracking
+                  noticeOfMotionArray = [{
+                    attendanceMode: 'BY_FORMAT' as CourtAttendanceMode, // Dummy value for form state (not used for TO_FILE_REPLY)
+                    formatSubmitted: undefined,
+                    formatFilledBy: undefined,
+                    appearingAG: undefined,
+                    appearingAGDetails: undefined,
+                    aagDgWhoWillAppear: undefined,
+                    attendingOfficer: undefined,
+                    attendingOfficerDetails: undefined,
+                    investigatingOfficer: undefined,
+                    details: '',
+                    officerDeputedForReply: rt.officerDeputedForReply || '',
+                    vettingOfficerDetails: rt.vettingOfficerDetails || '',
+                    replyFiled: rt.replyFiled || false,
+                    replyFilingDate: rt.replyFilingDate ? formatDateInputValue(rt.replyFilingDate) : '',
+                    advocateGeneralName: rt.advocateGeneralName || '',
+                    replyScrutinizedByHC: rt.replyScrutinizedByHC || false,
+                    investigatingOfficerName: rt.investigatingOfficerName || '',
+                    proceedingInCourt: rt.proceedingInCourt || '',
+                    orderInShort: rt.orderInShort || '',
+                    nextActionablePoint: rt.nextActionablePoint || '',
+                    nextDateOfHearingReply: rt.nextDateOfHearingReply ? formatDateInputValue(rt.nextDateOfHearingReply) : '',
+                  }]
+                }
+              } else if (draft.noticeOfMotion) {
                 if (Array.isArray(draft.noticeOfMotion)) {
                   noticeOfMotionArray = draft.noticeOfMotion.map(nom => ({
                     attendanceMode: nom.attendanceMode || 'BY_FORMAT',
                     formatSubmitted: nom.formatSubmitted || false,
                     formatFilledBy: normalizePerson(nom.formatFilledBy),
-                    appearingAG: undefined, // Legacy field
+                    appearingAG: undefined,
                     appearingAGDetails: nom.attendanceMode === 'BY_PERSON' ? (nom.appearingAGDetails || '') : undefined,
                     aagDgWhoWillAppear: nom.attendanceMode === 'BY_FORMAT' ? (nom.aagDgWhoWillAppear || '') : undefined,
-                    attendingOfficer: undefined, // Legacy field
+                    attendingOfficer: undefined,
                     attendingOfficerDetails: nom.attendanceMode === 'BY_PERSON' ? (nom.attendingOfficerDetails || '') : undefined,
                     investigatingOfficer: normalizeInvestigatingOfficer(nom),
                     details: nom.details || '',
-                    officerDeputedForReply: nom.officerDeputedForReply || '',
-                    vettingOfficerDetails: nom.vettingOfficerDetails || '',
-              replyFiled: nom.replyFiled || false,
-              replyFilingDate: nom.replyFilingDate ? formatDateInputValue(nom.replyFilingDate) : '',
-              advocateGeneralName: nom.advocateGeneralName || '',
-              replyScrutinizedByHC: nom.replyScrutinizedByHC || false,
-              investigatingOfficerName: nom.investigatingOfficerName || '',
-              proceedingInCourt: nom.proceedingInCourt || '',
-              orderInShort: nom.orderInShort || '',
-              nextActionablePoint: nom.nextActionablePoint || '',
-              nextDateOfHearingReply: nom.nextDateOfHearingReply ? formatDateInputValue(nom.nextDateOfHearingReply) : '',
-            }))
+                    officerDeputedForReply: undefined,
+                    vettingOfficerDetails: undefined,
+                    replyFiled: undefined,
+                    replyFilingDate: undefined,
+                    advocateGeneralName: undefined,
+                    replyScrutinizedByHC: undefined,
+                    investigatingOfficerName: undefined,
+                    proceedingInCourt: undefined,
+                    orderInShort: undefined,
+                    nextActionablePoint: undefined,
+                    nextDateOfHearingReply: undefined,
+                  }))
                 } else {
                   const nom = draft.noticeOfMotion
                   noticeOfMotionArray = [{
                     attendanceMode: nom.attendanceMode || 'BY_FORMAT',
                     formatSubmitted: nom.formatSubmitted || false,
                     formatFilledBy: normalizePerson(nom.formatFilledBy),
-                    appearingAG: undefined, // Legacy field
+                    appearingAG: undefined,
                     appearingAGDetails: nom.attendanceMode === 'BY_PERSON' ? (nom.appearingAGDetails || '') : undefined,
                     aagDgWhoWillAppear: nom.attendanceMode === 'BY_FORMAT' ? (nom.aagDgWhoWillAppear || '') : undefined,
-                    attendingOfficer: undefined, // Legacy field
+                    attendingOfficer: undefined,
                     attendingOfficerDetails: nom.attendanceMode === 'BY_PERSON' ? (nom.attendingOfficerDetails || '') : undefined,
                     investigatingOfficer: normalizeInvestigatingOfficer(nom),
                     details: nom.details || '',
-                    officerDeputedForReply: nom.officerDeputedForReply || '',
-                    vettingOfficerDetails: nom.vettingOfficerDetails || '',
-                    replyFiled: nom.replyFiled || false,
-                    replyFilingDate: nom.replyFilingDate ? formatDateInputValue(nom.replyFilingDate) : '',
-                    advocateGeneralName: nom.advocateGeneralName || '',
-                    replyScrutinizedByHC: nom.replyScrutinizedByHC || false,
+                    officerDeputedForReply: undefined,
+                    vettingOfficerDetails: undefined,
+                    replyFiled: undefined,
+                    replyFilingDate: undefined,
+                    advocateGeneralName: undefined,
+                    replyScrutinizedByHC: undefined,
+                    investigatingOfficerName: undefined,
+                    proceedingInCourt: undefined,
+                    orderInShort: undefined,
+                    nextActionablePoint: undefined,
+                    nextDateOfHearingReply: undefined,
                   }]
                 }
               }
@@ -213,12 +291,7 @@ export default function FIRDetail() {
                   courtNumber: hearingDetails.courtNumber || '',
                 },
                 noticeOfMotion: noticeOfMotionArray.length > 0 ? noticeOfMotionArray : prev.noticeOfMotion,
-                replyTracking: draft.replyTracking ? {
-                  proceedingInCourt: draft.replyTracking.proceedingInCourt || '',
-                  orderInShort: draft.replyTracking.orderInShort || '',
-                  nextActionablePoint: draft.replyTracking.nextActionablePoint || '',
-                  nextDateOfHearing: draft.replyTracking.nextDateOfHearing ? formatDateInputValue(draft.replyTracking.nextDateOfHearing) : '',
-                } : prev.replyTracking,
+                replyTracking: prev.replyTracking, // Not used anymore - TO_FILE_REPLY data is in noticeOfMotion
                 argumentDetails: (draft as any).argumentDetails ? (
                   Array.isArray((draft as any).argumentDetails) 
                     ? (draft as any).argumentDetails.map((ad: any) => ({
@@ -534,8 +607,9 @@ export default function FIRDetail() {
       if (formData.type === 'NOTICE_OF_MOTION') {
         payload.noticeOfMotion = formData.noticeOfMotion.length === 1 ? formData.noticeOfMotion[0] : formData.noticeOfMotion
       } else if (formData.type === 'TO_FILE_REPLY') {
-        payload.noticeOfMotion = formData.noticeOfMotion.length === 1 ? formData.noticeOfMotion[0] : formData.noticeOfMotion
-        // replyTracking fields are now embedded in each noticeOfMotion entry
+        payload.replyTracking = formData.noticeOfMotion.length === 1 
+          ? convertToReplyTracking(formData.noticeOfMotion[0])
+          : formData.noticeOfMotion.map(convertToReplyTracking)
       } else if (formData.type === 'ARGUMENT') {
         payload.argumentDetails = formData.argumentDetails && formData.argumentDetails.length > 0 
           ? (formData.argumentDetails.length === 1 ? formData.argumentDetails[0] : formData.argumentDetails)
@@ -545,15 +619,52 @@ export default function FIRDetail() {
           ? formData.anyOtherDetails
           : undefined
       }
+      
+      // Add Decision Details if writStatus is provided
+      if (formData.decisionDetails?.writStatus) {
+        payload.decisionDetails = formData.decisionDetails
+      }
 
       // Remove createdBy from payload - backend will set it from auth context
       delete payload.createdBy
 
-      const newProceeding = await createProceeding(payload, orderOfProceedingFile || undefined)
+      // Prepare attachment files based on proceeding type
+      const attachmentFiles: {
+        noticeOfMotion?: Map<number, File>
+        replyTracking?: Map<number, File>
+        argumentDetails?: Map<number, File>
+        anyOtherDetails?: Map<number, File>
+        decisionDetails?: File
+      } = {}
+
+      if (formData.type === 'NOTICE_OF_MOTION' && noticeOfMotionFiles.size > 0) {
+        attachmentFiles.noticeOfMotion = noticeOfMotionFiles
+      } else if (formData.type === 'TO_FILE_REPLY' && replyTrackingFiles.size > 0) {
+        attachmentFiles.replyTracking = replyTrackingFiles
+      } else if (formData.type === 'ARGUMENT' && argumentFiles.size > 0) {
+        attachmentFiles.argumentDetails = argumentFiles
+      } else if (formData.type === 'ANY_OTHER' && anyOtherFiles.size > 0) {
+        attachmentFiles.anyOtherDetails = anyOtherFiles
+      }
+
+      if (decisionDetailsFile) {
+        attachmentFiles.decisionDetails = decisionDetailsFile
+      }
+
+      const newProceeding = await createProceeding(
+        payload, 
+        orderOfProceedingFile || undefined,
+        Object.keys(attachmentFiles).length > 0 ? attachmentFiles : undefined
+      )
       setLocalProceedings((prev) => [newProceeding, ...prev])
       setShowForm(false)
       setIsResumingIncomplete(false)
       setOrderOfProceedingFile(null)
+      setNoticeOfMotionFiles(new Map())
+      setReplyTrackingFiles(new Map())
+      setArgumentFiles(new Map())
+      setAnyOtherFiles(new Map())
+      setDecisionDetailsFile(null)
       
       // Reset form but keep FIR selected
       setFormData({
@@ -573,6 +684,7 @@ export default function FIRDetail() {
           appearingAGDetails: '',
           attendingOfficerDetails: '',
           investigatingOfficer: { name: '', rank: '', mobile: '' },
+          details: '',
           nextDateOfHearing: '',
           officerDeputedForReply: '',
           vettingOfficerDetails: '',
@@ -1451,7 +1563,7 @@ export default function FIRDetail() {
                                       e.target.value = ''
                                       return
                                     }
-                                    setNoticeOfMotionFiles(prev => {
+                                    setReplyTrackingFiles(prev => {
                                       const newMap = new Map(prev)
                                       newMap.set(index, file)
                                       return newMap
@@ -1460,13 +1572,13 @@ export default function FIRDetail() {
                                   }
                                 }}
                               />
-                              {noticeOfMotionFiles.get(index) && (
+                              {replyTrackingFiles.get(index) && (
                                 <div className="flex items-center gap-2 text-sm text-gray-600">
-                                  <span>{noticeOfMotionFiles.get(index)?.name}</span>
+                                  <span>{replyTrackingFiles.get(index)?.name}</span>
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      setNoticeOfMotionFiles(prev => {
+                                      setReplyTrackingFiles(prev => {
                                         const newMap = new Map(prev)
                                         newMap.delete(index)
                                         return newMap
@@ -1577,7 +1689,7 @@ export default function FIRDetail() {
                                       e.target.value = ''
                                       return
                                     }
-                                    setNoticeOfMotionFiles(prev => {
+                                    setArgumentFiles(prev => {
                                       const newMap = new Map(prev)
                                       newMap.set(index, file)
                                       return newMap
@@ -1586,13 +1698,13 @@ export default function FIRDetail() {
                                   }
                                 }}
                               />
-                              {noticeOfMotionFiles.get(index) && (
+                              {argumentFiles.get(index) && (
                                 <div className="mt-2 flex items-center gap-2 text-sm text-gray-600">
-                                  <span>{noticeOfMotionFiles.get(index)?.name}</span>
+                                  <span>{argumentFiles.get(index)?.name}</span>
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      setNoticeOfMotionFiles(prev => {
+                                      setArgumentFiles(prev => {
                                         const newMap = new Map(prev)
                                         newMap.delete(index)
                                         return newMap
@@ -1745,7 +1857,7 @@ export default function FIRDetail() {
                                     e.target.value = ''
                                     return
                                   }
-                                  setNoticeOfMotionFiles(prev => {
+                                  setAnyOtherFiles(prev => {
                                     const newMap = new Map(prev)
                                     newMap.set(index, file)
                                     return newMap
@@ -1754,13 +1866,13 @@ export default function FIRDetail() {
                                 }
                               }}
                             />
-                            {noticeOfMotionFiles.get(index) && (
+                            {anyOtherFiles.get(index) && (
                               <div className="flex items-center gap-2 text-sm text-gray-600">
-                                <span>{noticeOfMotionFiles.get(index)?.name}</span>
+                                <span>{anyOtherFiles.get(index)?.name}</span>
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    setNoticeOfMotionFiles(prev => {
+                                    setAnyOtherFiles(prev => {
                                       const newMap = new Map(prev)
                                       newMap.delete(index)
                                       return newMap
@@ -1885,7 +1997,7 @@ export default function FIRDetail() {
                     </label>
                     <div className="mt-2 flex items-center gap-3">
                       <input
-                        id="order-of-proceeding-file-firdetail-decision"
+                        id="decision-details-file-firdetail"
                         type="file"
                         accept=".pdf,.png,.jpeg,.jpg,.xlsx,.xls"
                         className="block w-full text-sm text-gray-500 file:mr-4 file:rounded-md file:border-0 file:bg-indigo-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-indigo-700 hover:file:bg-indigo-100"
@@ -1898,21 +2010,21 @@ export default function FIRDetail() {
                               e.target.value = ''
                               return
                             }
-                            setOrderOfProceedingFile(file)
+                            setDecisionDetailsFile(file)
                             setError(null)
                           }
                         }}
                       />
-                      {orderOfProceedingFile && (
+                      {decisionDetailsFile && (
                         <div className="flex items-center gap-2 text-sm text-gray-600">
-                          <span>{orderOfProceedingFile.name}</span>
+                          <span>{decisionDetailsFile.name}</span>
                           <button
                             type="button"
                             onClick={(e) => {
                               e.preventDefault()
                               e.stopPropagation()
-                              setOrderOfProceedingFile(null)
-                              const fileInput = document.getElementById('order-of-proceeding-file-firdetail-decision') as HTMLInputElement
+                              setDecisionDetailsFile(null)
+                              const fileInput = document.getElementById('decision-details-file-firdetail') as HTMLInputElement
                               if (fileInput) fileInput.value = ''
                             }}
                             className="text-red-600 hover:text-red-700"

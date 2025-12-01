@@ -234,13 +234,23 @@ export async function fetchDraftProceedingByFIR(firId: string) {
   return data
 }
 
-export async function createProceeding(payload: CreateProceedingInput, file?: File) {
+export async function createProceeding(
+  payload: CreateProceedingInput, 
+  file?: File,
+  attachmentFiles?: {
+    noticeOfMotion?: Map<number, File>
+    replyTracking?: Map<number, File>
+    argumentDetails?: Map<number, File>
+    anyOtherDetails?: Map<number, File>
+    decisionDetails?: File
+  }
+) {
   const token = getAuthToken()
   if (!token) {
     throw new Error('Authentication required')
   }
 
-  // Create FormData if file is present, otherwise use JSON
+  // Create FormData
   const formData = new FormData()
   
   // Add all payload fields to FormData
@@ -269,9 +279,45 @@ export async function createProceeding(payload: CreateProceedingInput, file?: Fi
     formData.append('draft', String(payload.draft))
   }
   
-  // Add file if present
+  // Add orderOfProceeding file if present (legacy support)
   if (file) {
     formData.append('orderOfProceeding', file)
+  }
+
+  // Add attachment files for all proceeding types
+  if (attachmentFiles) {
+    // Notice of Motion attachments
+    if (attachmentFiles.noticeOfMotion) {
+      attachmentFiles.noticeOfMotion.forEach((file, index) => {
+        formData.append(`attachments_noticeOfMotion_${index}`, file)
+      })
+    }
+
+    // To File Reply attachments
+    if (attachmentFiles.replyTracking) {
+      attachmentFiles.replyTracking.forEach((file, index) => {
+        formData.append(`attachments_replyTracking_${index}`, file)
+      })
+    }
+
+    // Argument attachments
+    if (attachmentFiles.argumentDetails) {
+      attachmentFiles.argumentDetails.forEach((file, index) => {
+        formData.append(`attachments_argumentDetails_${index}`, file)
+      })
+    }
+
+    // Any Other attachments
+    if (attachmentFiles.anyOtherDetails) {
+      attachmentFiles.anyOtherDetails.forEach((file, index) => {
+        formData.append(`attachments_anyOtherDetails_${index}`, file)
+      })
+    }
+
+    // Decision Details attachment
+    if (attachmentFiles.decisionDetails) {
+      formData.append('attachments_decisionDetails', attachmentFiles.decisionDetails)
+    }
   }
 
   const response = await fetch(`${API_BASE_URL}/v1/proceedings`, {

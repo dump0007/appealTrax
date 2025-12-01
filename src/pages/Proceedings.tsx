@@ -2,7 +2,24 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { createProceeding, fetchAllProceedings, fetchDraftProceedingByFIR, fetchFIRs, searchFIRs } from '../lib/api'
 import { useAuthStore, useApiCacheStore } from '../store'
-import type { FIR, Proceeding, ProceedingType, CourtAttendanceMode, CreateProceedingInput, NoticeOfMotionDetails, AnyOtherDetails, PersonDetails } from '../types'
+import type { FIR, Proceeding, ProceedingType, CourtAttendanceMode, CreateProceedingInput, NoticeOfMotionDetails, AnyOtherDetails, PersonDetails, ReplyTrackingDetails } from '../types'
+
+// Helper function to convert NoticeOfMotionDetails to ReplyTrackingDetails for TO_FILE_REPLY
+function convertToReplyTracking(entry: NoticeOfMotionDetails): ReplyTrackingDetails {
+  return {
+    officerDeputedForReply: entry.officerDeputedForReply,
+    vettingOfficerDetails: entry.vettingOfficerDetails,
+    replyFiled: entry.replyFiled,
+    replyFilingDate: entry.replyFilingDate,
+    advocateGeneralName: entry.advocateGeneralName,
+    replyScrutinizedByHC: entry.replyScrutinizedByHC,
+    investigatingOfficerName: entry.investigatingOfficerName,
+    proceedingInCourt: entry.proceedingInCourt,
+    orderInShort: entry.orderInShort,
+    nextActionablePoint: entry.nextActionablePoint,
+    nextDateOfHearingReply: entry.nextDateOfHearingReply,
+  }
+}
 
 export default function Proceedings() {
   const navigate = useNavigate()
@@ -73,6 +90,10 @@ export default function Proceedings() {
   })
   const [orderOfProceedingFile, setOrderOfProceedingFile] = useState<File | null>(null)
   const [noticeOfMotionFiles, setNoticeOfMotionFiles] = useState<Map<number, File>>(new Map())
+  const [replyTrackingFiles, setReplyTrackingFiles] = useState<Map<number, File>>(new Map())
+  const [argumentFiles, setArgumentFiles] = useState<Map<number, File>>(new Map())
+  const [anyOtherFiles, setAnyOtherFiles] = useState<Map<number, File>>(new Map())
+  const [decisionDetailsFile, setDecisionDetailsFile] = useState<File | null>(null)
 
   const formatDateInputValue = (value: string | Date | null | undefined): string => {
     if (!value) return ''
@@ -529,9 +550,9 @@ export default function Proceedings() {
       if (formData.type === 'NOTICE_OF_MOTION') {
         payload.noticeOfMotion = formData.noticeOfMotion.length === 1 ? formData.noticeOfMotion[0] : formData.noticeOfMotion
       } else if (formData.type === 'TO_FILE_REPLY') {
-        // TO_FILE_REPLY now stores replyTracking fields in each noticeOfMotion entry
-        payload.noticeOfMotion = formData.noticeOfMotion.length === 1 ? formData.noticeOfMotion[0] : formData.noticeOfMotion
-        // replyTracking fields are now embedded in each noticeOfMotion entry
+        payload.replyTracking = formData.noticeOfMotion.length === 1 
+          ? convertToReplyTracking(formData.noticeOfMotion[0])
+          : formData.noticeOfMotion.map(convertToReplyTracking)
       } else if (formData.type === 'ARGUMENT') {
         payload.argumentDetails = formData.argumentDetails && formData.argumentDetails.length > 0 
           ? (formData.argumentDetails.length === 1 ? formData.argumentDetails[0] : formData.argumentDetails)
@@ -550,10 +571,42 @@ export default function Proceedings() {
       // Remove createdBy from payload - backend will set it from auth context
       delete payload.createdBy
 
-      const newProceeding = await createProceeding(payload, orderOfProceedingFile || undefined)
+      // Prepare attachment files based on proceeding type
+      const attachmentFiles: {
+        noticeOfMotion?: Map<number, File>
+        replyTracking?: Map<number, File>
+        argumentDetails?: Map<number, File>
+        anyOtherDetails?: Map<number, File>
+        decisionDetails?: File
+      } = {}
+
+      if (formData.type === 'NOTICE_OF_MOTION' && noticeOfMotionFiles.size > 0) {
+        attachmentFiles.noticeOfMotion = noticeOfMotionFiles
+      } else if (formData.type === 'TO_FILE_REPLY' && replyTrackingFiles.size > 0) {
+        attachmentFiles.replyTracking = replyTrackingFiles
+      } else if (formData.type === 'ARGUMENT' && argumentFiles.size > 0) {
+        attachmentFiles.argumentDetails = argumentFiles
+      } else if (formData.type === 'ANY_OTHER' && anyOtherFiles.size > 0) {
+        attachmentFiles.anyOtherDetails = anyOtherFiles
+      }
+
+      if (decisionDetailsFile) {
+        attachmentFiles.decisionDetails = decisionDetailsFile
+      }
+
+      const newProceeding = await createProceeding(
+        payload, 
+        orderOfProceedingFile || undefined,
+        Object.keys(attachmentFiles).length > 0 ? attachmentFiles : undefined
+      )
       setProceedings((prev) => [newProceeding, ...prev])
       setShowCreateForm(false)
       setOrderOfProceedingFile(null)
+      setNoticeOfMotionFiles(new Map())
+      setReplyTrackingFiles(new Map())
+      setArgumentFiles(new Map())
+      setAnyOtherFiles(new Map())
+      setDecisionDetailsFile(null)
       
       // Reset form
       setFormData({
@@ -573,6 +626,7 @@ export default function Proceedings() {
           appearingAG: { name: '', rank: '', mobile: '' },
           attendingOfficer: { name: '', rank: '', mobile: '' },
           investigatingOfficer: { name: '', rank: '', mobile: '' },
+          details: '',
           nextDateOfHearing: '',
           officerDeputedForReply: '',
           vettingOfficerDetails: '',
@@ -1440,7 +1494,7 @@ export default function Proceedings() {
                                     e.target.value = ''
                                     return
                                   }
-                                  setNoticeOfMotionFiles(prev => {
+                                  setReplyTrackingFiles(prev => {
                                     const newMap = new Map(prev)
                                     newMap.set(index, file)
                                     return newMap
@@ -1449,13 +1503,13 @@ export default function Proceedings() {
                                 }
                               }}
                             />
-                            {noticeOfMotionFiles.get(index) && (
+                            {replyTrackingFiles.get(index) && (
                               <div className="flex items-center gap-2 text-sm text-gray-600">
-                                <span>{noticeOfMotionFiles.get(index)?.name}</span>
+                                <span>{replyTrackingFiles.get(index)?.name}</span>
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    setNoticeOfMotionFiles(prev => {
+                                    setReplyTrackingFiles(prev => {
                                       const newMap = new Map(prev)
                                       newMap.delete(index)
                                       return newMap
@@ -1566,7 +1620,7 @@ export default function Proceedings() {
                                     e.target.value = ''
                                     return
                                   }
-                                  setNoticeOfMotionFiles(prev => {
+                                  setArgumentFiles(prev => {
                                     const newMap = new Map(prev)
                                     newMap.set(index, file)
                                     return newMap
@@ -1575,13 +1629,13 @@ export default function Proceedings() {
                                 }
                               }}
                             />
-                            {noticeOfMotionFiles.get(index) && (
+                            {argumentFiles.get(index) && (
                               <div className="mt-2 flex items-center gap-2 text-sm text-gray-600">
-                                <span>{noticeOfMotionFiles.get(index)?.name}</span>
+                                <span>{argumentFiles.get(index)?.name}</span>
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    setNoticeOfMotionFiles(prev => {
+                                    setArgumentFiles(prev => {
                                       const newMap = new Map(prev)
                                       newMap.delete(index)
                                       return newMap
@@ -1734,7 +1788,7 @@ export default function Proceedings() {
                                   e.target.value = ''
                                   return
                                 }
-                                setNoticeOfMotionFiles(prev => {
+                                setAnyOtherFiles(prev => {
                                   const newMap = new Map(prev)
                                   newMap.set(index, file)
                                   return newMap
@@ -1743,13 +1797,13 @@ export default function Proceedings() {
                               }
                             }}
                           />
-                          {noticeOfMotionFiles.get(index) && (
+                          {anyOtherFiles.get(index) && (
                             <div className="flex items-center gap-2 text-sm text-gray-600">
-                              <span>{noticeOfMotionFiles.get(index)?.name}</span>
+                              <span>{anyOtherFiles.get(index)?.name}</span>
                               <button
                                 type="button"
                                 onClick={() => {
-                                  setNoticeOfMotionFiles(prev => {
+                                  setAnyOtherFiles(prev => {
                                     const newMap = new Map(prev)
                                     newMap.delete(index)
                                     return newMap
@@ -1874,7 +1928,7 @@ export default function Proceedings() {
                   </label>
                   <div className="mt-2 flex items-center gap-3">
                     <input
-                      id="order-of-proceeding-file-proceedings-decision"
+                      id="decision-details-file-proceedings"
                       type="file"
                       accept=".pdf,.png,.jpeg,.jpg,.xlsx,.xls"
                       className="block w-full text-sm text-gray-500 file:mr-4 file:rounded-md file:border-0 file:bg-indigo-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-indigo-700 hover:file:bg-indigo-100"
@@ -1887,21 +1941,21 @@ export default function Proceedings() {
                             e.target.value = ''
                             return
                           }
-                          setOrderOfProceedingFile(file)
+                          setDecisionDetailsFile(file)
                           setError(null)
                         }
                       }}
                     />
-                    {orderOfProceedingFile && (
+                    {decisionDetailsFile && (
                       <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <span>{orderOfProceedingFile.name}</span>
+                        <span>{decisionDetailsFile.name}</span>
                         <button
                           type="button"
                           onClick={(e) => {
                             e.preventDefault()
                             e.stopPropagation()
-                            setOrderOfProceedingFile(null)
-                            const fileInput = document.getElementById('order-of-proceeding-file-proceedings-decision') as HTMLInputElement
+                            setDecisionDetailsFile(null)
+                            const fileInput = document.getElementById('decision-details-file-proceedings') as HTMLInputElement
                             if (fileInput) fileInput.value = ''
                           }}
                           className="text-red-600 hover:text-red-700"

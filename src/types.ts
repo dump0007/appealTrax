@@ -145,33 +145,43 @@ export interface NoticeOfMotionDetails {
   attendingOfficer?: PersonDetails // Legacy - for BY_PERSON mode (deprecated, use attendingOfficerDetails)
   attendingOfficerDetails?: string // For BY_PERSON mode
   investigatingOfficer?: PersonDetails
-  investigatingOfficerName?: string // For TO_FILE_REPLY mode - single name field
-  nextDateOfHearing?: string
-  details?: string // Details of proceeding
+  details: string // Details of proceeding
+  nextDateOfHearing?: string // For NOTICE_OF_MOTION
+  attachment?: string // Filename of the attached document for this record
+  // TO_FILE_REPLY fields are kept here for form state compatibility, but should be sent as ReplyTrackingDetails
   officerDeputedForReply?: string
   vettingOfficerDetails?: string
   replyFiled?: boolean
   replyFilingDate?: string
   advocateGeneralName?: string
   replyScrutinizedByHC?: boolean
-  // ReplyTracking fields for TO_FILE_REPLY entries (per entry)
+  investigatingOfficerName?: string
   proceedingInCourt?: string
   orderInShort?: string
   nextActionablePoint?: string
-  nextDateOfHearingReply?: string // Next date of hearing for reply tracking
+  nextDateOfHearingReply?: string // For TO_FILE_REPLY
 }
 
 export interface ReplyTrackingDetails {
+  officerDeputedForReply?: string
+  vettingOfficerDetails?: string
+  replyFiled?: boolean
+  replyFilingDate?: string
+  advocateGeneralName?: string
+  replyScrutinizedByHC?: boolean
+  investigatingOfficerName?: string
   proceedingInCourt?: string
   orderInShort?: string
   nextActionablePoint?: string
-  nextDateOfHearing?: string
+  nextDateOfHearingReply?: string
+  attachment?: string // Filename of the attached document for this record
 }
 
 export interface ArgumentDetails {
   argumentBy?: string // Argument by
   argumentWith?: string // Argument with
   nextDateOfHearing?: string
+  attachment?: string // Filename of the attached document for this record
 }
 
 export interface AnyOtherDetails {
@@ -179,6 +189,7 @@ export interface AnyOtherDetails {
   officerDetails?: PersonDetails // Details of officer (Name, Rank, Mobile)
   appearingAGDetails?: string // Details of AG who is appearing
   details?: string // Details of proceeding
+  attachment?: string // Filename of the attached document for this record
 }
 
 export interface DecisionDetails {
@@ -186,6 +197,7 @@ export interface DecisionDetails {
   dateOfDecision?: string // Date of Decision
   decisionByCourt?: string // Decision by Court
   remarks?: string // Remarks
+  attachment?: string // Filename of the attached document for decision details
 }
 
 export interface Proceeding {
@@ -197,7 +209,7 @@ export interface Proceeding {
   details?: string
   hearingDetails?: ProceedingHearingDetails
   noticeOfMotion?: NoticeOfMotionDetails | NoticeOfMotionDetails[] // Support both single and array
-  replyTracking?: ReplyTrackingDetails
+  replyTracking?: ReplyTrackingDetails | ReplyTrackingDetails[] // Support both single and array for TO_FILE_REPLY
   argumentDetails?: ArgumentDetails | ArgumentDetails[] // Support both single and array
   anyOtherDetails?: AnyOtherDetails[]
   createdBy?: string
@@ -215,7 +227,7 @@ export interface CreateProceedingInput {
   details?: string
   hearingDetails: ProceedingHearingDetails
   noticeOfMotion?: NoticeOfMotionDetails | NoticeOfMotionDetails[] // Support both single and array
-  replyTracking?: ReplyTrackingDetails
+  replyTracking?: ReplyTrackingDetails | ReplyTrackingDetails[] // Support both single and array for TO_FILE_REPLY
   argumentDetails?: ArgumentDetails | ArgumentDetails[] // Support both single and array
   anyOtherDetails?: AnyOtherDetails[]
   decisionDetails?: DecisionDetails
