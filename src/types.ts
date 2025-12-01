@@ -31,13 +31,9 @@ export interface Appeal {
   hearings: Hearing[]
 }
 
-export type FIRStatus =
-  | 'REGISTERED'
-  | 'UNDER_INVESTIGATION'
-  | 'ONGOING_HEARING'
-  | 'CHARGESHEET_FILED'
-  | 'CLOSED'
-  | 'WITHDRAWN'
+// FIR status now uses WritStatus from DecisionDetails
+// Legacy type alias for backward compatibility
+export type FIRStatus = 'ALLOWED' | 'PENDING' | 'DISMISSED' | 'WITHDRAWN' | 'DIRECTION'
 
 export type WritType =
   | 'BAIL'
@@ -94,14 +90,14 @@ export interface FIR {
   petitionerAddress: string
   petitionerPrayer: string
   respondents: (RespondentDetail | string)[]
-  status: FIRStatus | string
+  status?: FIRStatus | string
   createdAt: string
   updatedAt: string
   proceedings?: Proceeding[]
 }
 
 export interface FIRStatusCount {
-  status: FIRStatus | string
+  status?: FIRStatus | string
   count: number
 }
 
@@ -255,7 +251,7 @@ export interface CreateFIRInput {
   petitionerAddress: string
   petitionerPrayer: string
   respondents: RespondentDetail[]
-  status: FIRStatus
+  status?: FIRStatus
   linkedWrits?: string[]
   // title?: string // Commented out - using petitionerPrayer instead
   // description?: string // Commented out - using petitionerPrayer instead

@@ -4,14 +4,7 @@ import { createFIR, createProceeding, fetchDraftProceedingByFIR, fetchFIRDetail,
 import { useApiCacheStore } from '../store'
 import type { BailSubType, CreateFIRInput, CreateProceedingInput, FIR, FIRStatus, InvestigatingOfficerDetail, RespondentDetail, WritType, ProceedingType, CourtAttendanceMode, NoticeOfMotionDetails, AnyOtherDetails, PersonDetails, ArgumentDetails, WritStatus } from '../types'
 
-const STATUS_OPTIONS: FIRStatus[] = [
-  'REGISTERED',
-  'UNDER_INVESTIGATION',
-  'ONGOING_HEARING',
-  'CHARGESHEET_FILED',
-  'CLOSED',
-  'WITHDRAWN',
-]
+// Status is now managed via WritStatus from DecisionDetails in proceedings
 
 const WRIT_TYPE_OPTIONS: { label: string; value: WritType }[] = [
   { label: 'Bail', value: 'BAIL' },
@@ -51,7 +44,7 @@ const createInitialForm = (): CreateFIRInput => ({
   petitionerAddress: '',
   petitionerPrayer: '',
   respondents: [{ ...EMPTY_RESPONDENT }],
-  status: 'REGISTERED',
+    // status will be set when a proceeding with decisionDetails is created
   linkedWrits: [],
   // title: '', // Commented out - using petitionerPrayer instead
   // description: '', // Commented out - using petitionerPrayer instead
@@ -194,7 +187,7 @@ export default function FIRs() {
                   designation: (r as RespondentDetail).designation || '',
                 }))
               : [{ ...EMPTY_RESPONDENT }]),
-            status: fir.status as FIRStatus,
+            status: (fir.status as FIRStatus) || undefined,
             linkedWrits: [],
           })
           setCreatedFIRId(resumeFirId)
@@ -827,7 +820,7 @@ export default function FIRs() {
 
       const payload: CreateFIRInput = {
         ...formData,
-        status: 'REGISTERED', // Always set to REGISTERED by default
+        // Status will be set when a proceeding with decisionDetails is created
         sections: formData.sections && formData.sections.length ? formData.sections : [formData.underSection],
         respondents,
         investigatingOfficers,
@@ -890,11 +883,6 @@ export default function FIRs() {
 
       // Validate file if present
       if (orderOfProceedingFile) {
-        if (orderOfProceedingFile.size > 250 * 1024) {
-          setFormError('File size exceeds 250 KB limit')
-          setFormSubmitting(false)
-          return
-        }
         const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel']
         if (!allowedTypes.includes(orderOfProceedingFile.type)) {
           setFormError('Invalid file type. Only PDF, PNG, JPEG, JPG, and Excel files are allowed.')
@@ -954,11 +942,6 @@ export default function FIRs() {
 
       // Validate file if present
       if (orderOfProceedingFile) {
-        if (orderOfProceedingFile.size > 250 * 1024) {
-          setFormError('File size exceeds 250 KB limit')
-          setFormSubmitting(false)
-          return
-        }
         const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel']
         if (!allowedTypes.includes(orderOfProceedingFile.type)) {
           setFormError('Invalid file type. Only PDF, PNG, JPEG, JPG, and Excel files are allowed.')
@@ -2001,8 +1984,8 @@ export default function FIRs() {
                             <div className="block">
                               <label className="block text-sm font-medium text-gray-700 mb-2">
                                 {entry.attendanceMode === 'BY_FORMAT' 
-                                  ? 'Upload Doc of Proceeding' 
-                                  : 'Upload Files (Person)'}
+                                  ? 'Upload Doc of Proceeding (PDF, PNG, JPEG, JPG, Excel)' 
+                                  : 'Upload Files (Person) (PDF, PNG, JPEG, JPG, Excel)'}
                               </label>
                               <input
                                 type="file"
@@ -2015,11 +1998,6 @@ export default function FIRs() {
                                     const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel']
                                     if (!allowedTypes.includes(file.type)) {
                                       setFormError('Invalid file type. Only PDF, PNG, JPEG, JPG, and Excel files are allowed.')
-                                      e.target.value = ''
-                                      return
-                                    }
-                                    if (file.size > 250 * 1024) {
-                                      setFormError('File size must be less than 250 KB')
                                       e.target.value = ''
                                       return
                                     }
@@ -2243,7 +2221,7 @@ export default function FIRs() {
                             <div className="md:col-span-2">
                               <label className="block text-sm font-medium text-gray-700">
                                 Upload Order of Proceeding
-                                <span className="ml-1 text-xs text-gray-500">(PDF, PNG, JPEG, JPG, Excel - Max 250 KB)</span>
+                                <span className="ml-1 text-xs text-gray-500">(PDF, PNG, JPEG, JPG, Excel)</span>
                               </label>
                               <div className="mt-2 flex items-center gap-3">
                                 <input
@@ -2254,11 +2232,6 @@ export default function FIRs() {
                                   onChange={(e) => {
                                     const file = e.target.files?.[0]
                                     if (file) {
-                                      if (file.size > 250 * 1024) {
-                                        setFormError('File size must be less than 250 KB')
-                                        e.target.value = ''
-                                        return
-                                      }
                                       const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel']
                                       if (!allowedTypes.includes(file.type)) {
                                         setFormError('Invalid file type. Only PDF, PNG, JPEG, JPG, and Excel files are allowed.')
@@ -2375,7 +2348,7 @@ export default function FIRs() {
                             <div className="flex items-end">
                               <label className="block w-full text-sm font-medium text-gray-700">
                                 Upload Order of Proceeding
-                                <span className="ml-1 text-xs text-gray-500">(PDF, PNG, JPEG, JPG, Excel - Max 250 KB)</span>
+                                <span className="ml-1 text-xs text-gray-500">(PDF, PNG, JPEG, JPG, Excel)</span>
                                 <input
                                   id={`argument-file-firs-${index}`}
                                   type="file"
@@ -2384,11 +2357,6 @@ export default function FIRs() {
                                   onChange={(e) => {
                                     const file = e.target.files?.[0]
                                     if (file) {
-                                      if (file.size > 250 * 1024) {
-                                        setFormError('File size must be less than 250 KB')
-                                        e.target.value = ''
-                                        return
-                                      }
                                       const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel']
                                       if (!allowedTypes.includes(file.type)) {
                                         setFormError('Invalid file type. Only PDF, PNG, JPEG, JPG, and Excel files are allowed.')
@@ -2444,146 +2412,7 @@ export default function FIRs() {
                   )}
                 </div>
 
-                {/* Section 3: Decision Details */}
-                <div className="rounded-lg border border-gray-200 bg-gray-50 p-6 shadow-sm">
-                  <h3 className="mb-4 text-lg font-semibold text-gray-900">Decision Details</h3>
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <label className="text-sm font-medium text-gray-700">
-                      Writ status <span className="text-red-500 ml-1">*</span>
-                      <select
-                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-                        value={proceedingFormData.decisionDetails?.writStatus || ''}
-                        onChange={(e) => {
-                          const value = e.target.value
-                          setProceedingFormData((prev) => ({
-                            ...prev,
-                            decisionDetails: {
-                              writStatus: value ? (value as WritStatus) : undefined,
-                              dateOfDecision: prev.decisionDetails?.dateOfDecision || '',
-                              decisionByCourt: prev.decisionDetails?.decisionByCourt || '',
-                              remarks: prev.decisionDetails?.remarks || '',
-                            },
-                          }))
-                        }}
-                        required
-                      >
-                        <option value="">Select writ status</option>
-                        <option value="ALLOWED">Allowed</option>
-                        <option value="PENDING">Pending</option>
-                        <option value="DISMISSED">Dismissed</option>
-                        <option value="WITHDRAWN">Withdrawn</option>
-                        <option value="DIRECTION">Direction</option>
-                      </select>
-                    </label>
-
-                    <label className="text-sm font-medium text-gray-700">
-                      Date of Decision
-                      <input
-                        type="date"
-                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-                        value={formatDateInputValue(proceedingFormData.decisionDetails?.dateOfDecision)}
-                        onChange={(e) =>
-                          setProceedingFormData((prev) => ({
-                            ...prev,
-                            decisionDetails: {
-                              ...prev.decisionDetails,
-                              dateOfDecision: e.target.value,
-                            },
-                          }))
-                        }
-                      />
-                    </label>
-
-                    <label className="md:col-span-2 text-sm font-medium text-gray-700">
-                      Decision by Court
-                      <input
-                        type="text"
-                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-                        value={proceedingFormData.decisionDetails?.decisionByCourt || ''}
-                        onChange={(e) =>
-                          setProceedingFormData((prev) => ({
-                            ...prev,
-                            decisionDetails: {
-                              ...prev.decisionDetails,
-                              decisionByCourt: e.target.value,
-                            },
-                          }))
-                        }
-                      />
-                    </label>
-
-                    <label className="md:col-span-2 text-sm font-medium text-gray-700">
-                      Remarks
-                      <textarea
-                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-                        rows={3}
-                        value={proceedingFormData.decisionDetails?.remarks || ''}
-                        onChange={(e) =>
-                          setProceedingFormData((prev) => ({
-                            ...prev,
-                            decisionDetails: {
-                              ...prev.decisionDetails,
-                              remarks: e.target.value,
-                            },
-                          }))
-                        }
-                      />
-                    </label>
-
-                    <div className="md:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700">
-                        Upload Order of Proceeding
-                        <span className="ml-1 text-xs text-gray-500">(PDF, PNG, JPEG, JPG, Excel - Max 250 KB)</span>
-                      </label>
-                      <div className="mt-2 flex items-center gap-3">
-                        <input
-                          id="order-of-proceeding-file-firs-decision"
-                          type="file"
-                          accept=".pdf,.png,.jpeg,.jpg,.xlsx,.xls"
-                          className="block w-full text-sm text-gray-500 file:mr-4 file:rounded-md file:border-0 file:bg-indigo-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-indigo-700 hover:file:bg-indigo-100"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0]
-                            if (file) {
-                              if (file.size > 250 * 1024) {
-                                setFormError('File size exceeds 250 KB limit')
-                                e.target.value = ''
-                                return
-                              }
-                              const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel']
-                              if (!allowedTypes.includes(file.type)) {
-                                setFormError('Invalid file type. Only PDF, PNG, JPEG, JPG, and Excel files are allowed.')
-                                e.target.value = ''
-                                return
-                              }
-                              setOrderOfProceedingFile(file)
-                              setFormError(null)
-                            }
-                          }}
-                        />
-                        {orderOfProceedingFile && (
-                          <div className="flex items-center gap-2 text-sm text-gray-600">
-                            <span>{orderOfProceedingFile.name}</span>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.preventDefault()
-                                e.stopPropagation()
-                                setOrderOfProceedingFile(null)
-                                const fileInput = document.getElementById('order-of-proceeding-file-firs-decision') as HTMLInputElement
-                                if (fileInput) fileInput.value = ''
-                              }}
-                              className="text-red-600 hover:text-red-700"
-                            >
-                              ×
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Section 4: Any Other */}
+                {/* Section 3: Any Other */}
                 {proceedingFormData.type === 'ANY_OTHER' && (
                   <div className="space-y-4">
                     {(proceedingFormData.anyOtherDetails || []).map((entry, index) => (
@@ -2685,7 +2514,7 @@ export default function FIRs() {
                           <div className="md:col-span-2">
                             <label className="block text-sm font-medium text-gray-700">
                               Upload Doc of Proceeding
-                              <span className="ml-1 text-xs text-gray-500">(PDF, PNG, JPEG, JPG, Excel - Max 250 KB)</span>
+                              <span className="ml-1 text-xs text-gray-500">(PDF, PNG, JPEG, JPG, Excel)</span>
                             </label>
                             <div className="mt-2 flex items-center gap-3">
                               <input
@@ -2696,11 +2525,6 @@ export default function FIRs() {
                                 onChange={(e) => {
                                   const file = e.target.files?.[0]
                                   if (file) {
-                                    if (file.size > 250 * 1024) {
-                                      setFormError('File size must be less than 250 KB')
-                                      e.target.value = ''
-                                      return
-                                    }
                                     const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel']
                                     if (!allowedTypes.includes(file.type)) {
                                       setFormError('Invalid file type. Only PDF, PNG, JPEG, JPG, and Excel files are allowed.')
@@ -2754,6 +2578,140 @@ export default function FIRs() {
                     </button>
                   </div>
                 )}
+
+                {/* Section 4: Decision Details */}
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-6 shadow-sm">
+                  <h3 className="mb-4 text-lg font-semibold text-gray-900">Decision Details</h3>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <label className="text-sm font-medium text-gray-700">
+                      Writ status <span className="text-red-500 ml-1">*</span>
+                      <select
+                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                        value={proceedingFormData.decisionDetails?.writStatus || ''}
+                        onChange={(e) => {
+                          const value = e.target.value
+                          setProceedingFormData((prev) => ({
+                            ...prev,
+                            decisionDetails: {
+                              writStatus: value ? (value as WritStatus) : undefined,
+                              dateOfDecision: prev.decisionDetails?.dateOfDecision || '',
+                              decisionByCourt: prev.decisionDetails?.decisionByCourt || '',
+                              remarks: prev.decisionDetails?.remarks || '',
+                            },
+                          }))
+                        }}
+                        required
+                      >
+                        <option value="">Select writ status</option>
+                        <option value="ALLOWED">Allowed</option>
+                        <option value="PENDING">Pending</option>
+                        <option value="DISMISSED">Dismissed</option>
+                        <option value="WITHDRAWN">Withdrawn</option>
+                        <option value="DIRECTION">Direction</option>
+                      </select>
+                    </label>
+
+                    <label className="text-sm font-medium text-gray-700">
+                      Date of Decision
+                      <input
+                        type="date"
+                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                        value={formatDateInputValue(proceedingFormData.decisionDetails?.dateOfDecision)}
+                        onChange={(e) =>
+                          setProceedingFormData((prev) => ({
+                            ...prev,
+                            decisionDetails: {
+                              ...prev.decisionDetails,
+                              dateOfDecision: e.target.value,
+                            },
+                          }))
+                        }
+                      />
+                    </label>
+
+                    <label className="md:col-span-2 text-sm font-medium text-gray-700">
+                      Decision by Court
+                      <input
+                        type="text"
+                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                        value={proceedingFormData.decisionDetails?.decisionByCourt || ''}
+                        onChange={(e) =>
+                          setProceedingFormData((prev) => ({
+                            ...prev,
+                            decisionDetails: {
+                              ...prev.decisionDetails,
+                              decisionByCourt: e.target.value,
+                            },
+                          }))
+                        }
+                      />
+                    </label>
+
+                    <label className="md:col-span-2 text-sm font-medium text-gray-700">
+                      Remarks
+                      <textarea
+                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                        rows={3}
+                        value={proceedingFormData.decisionDetails?.remarks || ''}
+                        onChange={(e) =>
+                          setProceedingFormData((prev) => ({
+                            ...prev,
+                            decisionDetails: {
+                              ...prev.decisionDetails,
+                              remarks: e.target.value,
+                            },
+                          }))
+                        }
+                      />
+                    </label>
+
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700">
+                        Upload Order of Proceeding
+                        <span className="ml-1 text-xs text-gray-500">(PDF, PNG, JPEG, JPG, Excel)</span>
+                      </label>
+                      <div className="mt-2 flex items-center gap-3">
+                        <input
+                          id="order-of-proceeding-file-firs-decision"
+                          type="file"
+                          accept=".pdf,.png,.jpeg,.jpg,.xlsx,.xls"
+                          className="block w-full text-sm text-gray-500 file:mr-4 file:rounded-md file:border-0 file:bg-indigo-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-indigo-700 hover:file:bg-indigo-100"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0]
+                            if (file) {
+                              const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel']
+                              if (!allowedTypes.includes(file.type)) {
+                                setFormError('Invalid file type. Only PDF, PNG, JPEG, JPG, and Excel files are allowed.')
+                                e.target.value = ''
+                                return
+                              }
+                              setOrderOfProceedingFile(file)
+                              setFormError(null)
+                            }
+                          }}
+                        />
+                        {orderOfProceedingFile && (
+                          <div className="flex items-center gap-2 text-sm text-gray-600">
+                            <span>{orderOfProceedingFile.name}</span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                setOrderOfProceedingFile(null)
+                                const fileInput = document.getElementById('order-of-proceeding-file-firs-decision') as HTMLInputElement
+                                if (fileInput) fileInput.value = ''
+                              }}
+                              className="text-red-600 hover:text-red-700"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
 
                 {formError && (
                   <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -2816,11 +2774,11 @@ export default function FIRs() {
               onChange={(e) => setStatusFilter(e.target.value)}
             >
               <option value="all">All Statuses</option>
-              {STATUS_OPTIONS.map((status) => (
-                <option key={status} value={status}>
-                  {formatStatusLabel(status)}
-                </option>
-              ))}
+              <option value="ALLOWED">Allowed</option>
+              <option value="PENDING">Pending</option>
+              <option value="DISMISSED">Dismissed</option>
+              <option value="WITHDRAWN">Withdrawn</option>
+              <option value="DIRECTION">Direction</option>
             </select>
             <input
               type="text"
@@ -2982,7 +2940,7 @@ export default function FIRs() {
                           ? 'bg-amber-100 text-amber-800'
                           : 'bg-gray-100 text-gray-800'
                       }`}>
-                        {formatStatusLabel(fir.status)}
+                        {formatStatusLabel(fir.status || 'UNKNOWN')}
                       </span>
                     </td>
                     <td className="px-4 py-3">{formatDate(fir.dateOfFIR || fir.dateOfFiling)}</td>

@@ -84,10 +84,10 @@ export default function Dashboard() {
       return []
     }
     return metrics.statusCounts.map((item) => ({
-      key: item.status,
-      label: formatStatusLabel(item.status),
+      key: item.status || 'UNKNOWN',
+      label: formatStatusLabel(item.status || 'UNKNOWN'),
       count: item.count,
-      color: STATUS_COLOR_MAP[item.status] ?? '#6366f1',
+      color: STATUS_COLOR_MAP[item.status || 'UNKNOWN'] ?? '#6366f1',
     }))
   }, [metrics])
 
@@ -169,7 +169,8 @@ export default function Dashboard() {
 
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-xl border bg-white p-4">
-          <h2 className="mb-4 text-lg font-semibold">Decision by Court</h2>
+          <h2 className="mb-4 text-lg font-semibold">Writ Status</h2>
+          <div className="mb-2 text-xs text-gray-500">Distribution of writs by current status</div>
           <div className="flex flex-col items-center gap-6 md:flex-row">
             <div
               className="h-52 w-52 rounded-full border border-gray-200"
@@ -195,7 +196,7 @@ export default function Dashboard() {
                 })
               ) : (
                 <div className="text-sm text-gray-500">
-                  {loading ? 'Loading court decisions…' : 'No court decisions yet.'}
+                  {loading ? 'Loading writ status…' : 'No writs found.'}
                 </div>
               )}
             </div>
@@ -265,7 +266,7 @@ export default function Dashboard() {
                   <td className="px-4 py-3 font-medium">{row.firNumber}</td>
                   <td className="px-4 py-3">{row.petitionerName}</td>
                   <td className="px-4 py-3">{row.branchName || row.branch || '—'}</td>
-                  <td className="px-4 py-3 capitalize">{formatStatusLabel(row.status)}</td>
+                  <td className="px-4 py-3 capitalize">{formatStatusLabel(row.status || 'UNKNOWN')}</td>
                   <td className="px-4 py-3">{formatDate(row.dateOfFIR || row.dateOfFiling)}</td>
                   <td className="px-4 py-3 text-right">
                     <Link
@@ -319,12 +320,11 @@ function MetricCard({
 }
 
 const STATUS_COLOR_MAP: Record<string, string> = {
-  REGISTERED: '#60a5fa',
-  UNDER_INVESTIGATION: '#f97316',
-  ONGOING_HEARING: '#fbbf24',
-  CHARGESHEET_FILED: '#34d399',
-  CLOSED: '#a855f7',
+  ALLOWED: '#34d399',
+  PENDING: '#fbbf24',
+  DISMISSED: '#f87171',
   WITHDRAWN: '#f87171',
+  DIRECTION: '#60a5fa',
 }
 
 const CITY_COLOR_PALETTE = [

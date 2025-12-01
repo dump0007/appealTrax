@@ -511,10 +511,6 @@ export default function Proceedings() {
 
       // Validate file if present
       if (orderOfProceedingFile) {
-        if (orderOfProceedingFile.size > 250 * 1024) {
-          setError('File size exceeds 250 KB limit')
-          return
-        }
         const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel']
         if (!allowedTypes.includes(orderOfProceedingFile.type)) {
           setError('Invalid file type. Only PDF, PNG, JPEG, JPG, and Excel files are allowed.')
@@ -1189,8 +1185,8 @@ export default function Proceedings() {
                         <div className="md:col-span-2">
                           <label className="block text-sm font-medium text-gray-700 mb-2">
                             {entry.attendanceMode === 'BY_FORMAT' 
-                              ? 'Upload Doc of Proceeding' 
-                              : 'Upload Files (Person)'}
+                              ? 'Upload Doc of Proceeding (PDF, PNG, JPEG, JPG, Excel)' 
+                              : 'Upload Files (Person) (PDF, PNG, JPEG, JPG, Excel)'}
                           </label>
                           <input
                             type="file"
@@ -1203,11 +1199,6 @@ export default function Proceedings() {
                                 const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel']
                                 if (!allowedTypes.includes(file.type)) {
                                   setError('Invalid file type. Only PDF, PNG, JPEG, JPG, and Excel files are allowed.')
-                                  e.target.value = ''
-                                  return
-                                }
-                                if (file.size > 250 * 1024) {
-                                  setError('File size must be less than 250 KB')
                                   e.target.value = ''
                                   return
                                 }
@@ -1432,7 +1423,7 @@ export default function Proceedings() {
                         <div className="md:col-span-2">
                           <label className="block text-sm font-medium text-gray-700">
                             Upload Order of Proceeding
-                            <span className="ml-1 text-xs text-gray-500">(PDF, PNG, JPEG, JPG, Excel - Max 250 KB)</span>
+                            <span className="ml-1 text-xs text-gray-500">(PDF, PNG, JPEG, JPG, Excel)</span>
                           </label>
                           <div className="mt-2 flex items-center gap-3">
                             <input
@@ -1443,11 +1434,6 @@ export default function Proceedings() {
                               onChange={(e) => {
                                 const file = e.target.files?.[0]
                                 if (file) {
-                                  if (file.size > 250 * 1024) {
-                                    setError('File size exceeds 250 KB limit')
-                                    e.target.value = ''
-                                    return
-                                  }
                                   const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel']
                                   if (!allowedTypes.includes(file.type)) {
                                     setError('Invalid file type. Only PDF, PNG, JPEG, JPG, and Excel files are allowed.')
@@ -1565,7 +1551,7 @@ export default function Proceedings() {
                         <div className="flex items-end">
                           <label className="block w-full text-sm font-medium text-gray-700">
                             Upload Order of Proceeding
-                            <span className="ml-1 text-xs text-gray-500">(PDF, PNG, JPEG, JPG, Excel - Max 250 KB)</span>
+                            <span className="ml-1 text-xs text-gray-500">(PDF, PNG, JPEG, JPG, Excel)</span>
                             <input
                               id={`argument-file-proceedings-${index}`}
                               type="file"
@@ -1574,11 +1560,6 @@ export default function Proceedings() {
                               onChange={(e) => {
                                 const file = e.target.files?.[0]
                                 if (file) {
-                                  if (file.size > 250 * 1024) {
-                                    setError('File size must be less than 250 KB')
-                                    e.target.value = ''
-                                    return
-                                  }
                                   const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel']
                                   if (!allowedTypes.includes(file.type)) {
                                     setError('Invalid file type. Only PDF, PNG, JPEG, JPG, and Excel files are allowed.')
@@ -1736,7 +1717,7 @@ export default function Proceedings() {
                       <div className="md:col-span-2">
                         <label className="block text-sm font-medium text-gray-700">
                           Upload Doc of Proceeding
-                          <span className="ml-1 text-xs text-gray-500">(PDF, PNG, JPEG, JPG, Excel - Max 250 KB)</span>
+                          <span className="ml-1 text-xs text-gray-500">(PDF, PNG, JPEG, JPG, Excel)</span>
                         </label>
                         <div className="mt-2 flex items-center gap-3">
                           <input
@@ -1747,11 +1728,6 @@ export default function Proceedings() {
                             onChange={(e) => {
                               const file = e.target.files?.[0]
                               if (file) {
-                                if (file.size > 250 * 1024) {
-                                  setError('File size must be less than 250 KB')
-                                  e.target.value = ''
-                                  return
-                                }
                                 const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel']
                                 if (!allowedTypes.includes(file.type)) {
                                   setError('Invalid file type. Only PDF, PNG, JPEG, JPG, and Excel files are allowed.')
@@ -1805,6 +1781,139 @@ export default function Proceedings() {
                 </button>
               </div>
             )}
+
+            {/* Section 4: Decision Details */}
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-6 shadow-sm">
+              <h3 className="mb-4 text-lg font-semibold text-gray-900">Decision Details</h3>
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="text-sm font-medium text-gray-700">
+                  Writ status <span className="text-red-500 ml-1">*</span>
+                  <select
+                    className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                    value={formData.decisionDetails?.writStatus || ''}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        decisionDetails: {
+                          writStatus: e.target.value ? (e.target.value as any) : prev.decisionDetails?.writStatus,
+                          dateOfDecision: prev.decisionDetails?.dateOfDecision || '',
+                          decisionByCourt: prev.decisionDetails?.decisionByCourt || '',
+                          remarks: prev.decisionDetails?.remarks || '',
+                        },
+                      }))
+                    }
+                    required
+                  >
+                    <option value="">Select writ status</option>
+                    <option value="ALLOWED">Allowed</option>
+                    <option value="PENDING">Pending</option>
+                    <option value="DISMISSED">Dismissed</option>
+                    <option value="WITHDRAWN">Withdrawn</option>
+                    <option value="DIRECTION">Direction</option>
+                  </select>
+                </label>
+
+                <label className="text-sm font-medium text-gray-700">
+                  Date of Decision
+                  <input
+                    type="date"
+                    className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                    value={formatDateInputValue(formData.decisionDetails?.dateOfDecision)}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        decisionDetails: {
+                          ...prev.decisionDetails,
+                          dateOfDecision: e.target.value,
+                        },
+                      }))
+                    }
+                  />
+                </label>
+
+                <label className="md:col-span-2 text-sm font-medium text-gray-700">
+                  Decision by Court
+                  <input
+                    type="text"
+                    className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                    value={formData.decisionDetails?.decisionByCourt || ''}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        decisionDetails: {
+                          ...prev.decisionDetails,
+                          decisionByCourt: e.target.value,
+                        },
+                      }))
+                    }
+                  />
+                </label>
+
+                <label className="md:col-span-2 text-sm font-medium text-gray-700">
+                  Remarks
+                  <textarea
+                    className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                    rows={3}
+                    value={formData.decisionDetails?.remarks || ''}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        decisionDetails: {
+                          ...prev.decisionDetails,
+                          remarks: e.target.value,
+                        },
+                      }))
+                    }
+                  />
+                </label>
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Upload Order of Proceeding
+                    <span className="ml-1 text-xs text-gray-500">(PDF, PNG, JPEG, JPG, Excel)</span>
+                  </label>
+                  <div className="mt-2 flex items-center gap-3">
+                    <input
+                      id="order-of-proceeding-file-proceedings-decision"
+                      type="file"
+                      accept=".pdf,.png,.jpeg,.jpg,.xlsx,.xls"
+                      className="block w-full text-sm text-gray-500 file:mr-4 file:rounded-md file:border-0 file:bg-indigo-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-indigo-700 hover:file:bg-indigo-100"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0]
+                        if (file) {
+                          const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel']
+                          if (!allowedTypes.includes(file.type)) {
+                            setError('Invalid file type. Only PDF, PNG, JPEG, JPG, and Excel files are allowed.')
+                            e.target.value = ''
+                            return
+                          }
+                          setOrderOfProceedingFile(file)
+                          setError(null)
+                        }
+                      }}
+                    />
+                    {orderOfProceedingFile && (
+                      <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <span>{orderOfProceedingFile.name}</span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            setOrderOfProceedingFile(null)
+                            const fileInput = document.getElementById('order-of-proceeding-file-proceedings-decision') as HTMLInputElement
+                            if (fileInput) fileInput.value = ''
+                          }}
+                          className="text-red-600 hover:text-red-700"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
 
             <div className="flex items-center justify-between">
               <button
