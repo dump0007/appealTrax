@@ -1390,7 +1390,8 @@ export default function FIRs() {
         const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel']
         if (!allowedTypes.includes(orderOfProceedingFile.type)) {
           setFormError('Invalid file type. Only PDF, PNG, JPEG, JPG, and Excel files are allowed.')
-          setFormSubmitting(false)
+          setIsCreating(false)
+          setShowConfirmModal(false)
           return
         }
       }
@@ -1517,13 +1518,15 @@ export default function FIRs() {
       setHasArgumentProceeding(false)
       setCurrentStep(1)
       setFormOpen(false)
+      setShowConfirmModal(false)
+      setIsCreating(false)
       // Refresh FIRs list
       const freshData = await fetchFIRs()
       setFirs(freshData)
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Failed to create proceeding')
-    } finally {
-      setFormSubmitting(false)
+      setIsCreating(false)
+      setShowConfirmModal(false)
     }
   }
 
