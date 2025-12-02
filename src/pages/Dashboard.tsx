@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { fetchFIRCityGraph, fetchFIRDashboard, fetchFIRs } from '../lib/api'
+import { fetchFIRCityGraph, fetchFIRDashboard, fetchFIRs, fetchProceedingsByFIR } from '../lib/api'
 import { useAuthStore, useApiCacheStore } from '../store'
 import type { FIR, FIRCityBreakdown, FIRDashboardMetrics } from '../types'
 
@@ -12,6 +12,7 @@ export default function Dashboard() {
   const [cityGraph, setCityGraph] = useState<FIRCityBreakdown[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [completedFIRs, setCompletedFIRs] = useState<Set<string>>(new Set())
 
   const handleCreateFIR = () => {
     navigate('/firs?create=true')
@@ -115,6 +116,31 @@ export default function Dashboard() {
       )
       .slice(0, 5)
   }, [firs])
+
+  // Check completion status for recent FIRs
+  useEffect(() => {
+    async function checkCompletionStatus() {
+      const completedSet = new Set<string>()
+      await Promise.all(
+        recentFirs.map(async (fir) => {
+          try {
+            const proceedings = await fetchProceedingsByFIR(fir._id)
+            const hasCompletedProceedings = proceedings && proceedings.length > 0 && 
+              proceedings.some(p => !p.draft)
+            if (hasCompletedProceedings) {
+              completedSet.add(fir._id)
+            }
+          } catch {
+            // Ignore errors when checking completion status
+          }
+        })
+      )
+      setCompletedFIRs(completedSet)
+    }
+    if (recentFirs.length > 0) {
+      checkCompletionStatus()
+    }
+  }, [recentFirs])
 
   const cityBars = useMemo(() => {
     if (cityGraph.length === 0) {
@@ -269,13 +295,24 @@ export default function Dashboard() {
                   <td className="px-4 py-3 capitalize">{formatStatusLabel(row.status || 'UNKNOWN')}</td>
                   <td className="px-4 py-3">{formatDate(row.dateOfFIR || row.dateOfFiling)}</td>
                   <td className="px-4 py-3 text-right">
-                    <Link
-                      to={`/firs/${row._id}`}
-                      onClick={(e) => e.stopPropagation()}
-                      className="rounded-md border border-indigo-600 px-3 py-1 text-xs font-medium text-indigo-600 hover:bg-indigo-50"
-                    >
-                      View
-                    </Link>
+                    <div className="flex items-center justify-end gap-2">
+                      <Link
+                        to={`/firs/${row._id}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="rounded-md border border-indigo-600 px-3 py-1 text-xs font-medium text-indigo-600 hover:bg-indigo-50"
+                      >
+                        View
+                      </Link>
+                      {completedFIRs.has(row._id) && (
+                        <Link
+                          to={`/firs?edit=${row._id}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="rounded-md border border-gray-600 px-3 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50"
+                        >
+                          Edit
+                        </Link>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

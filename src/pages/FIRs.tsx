@@ -85,6 +85,9 @@ export default function FIRs() {
   const [createdFIRId, setCreatedFIRId] = useState<string | null>(null)
   const [firsWithDrafts, setFirsWithDrafts] = useState<Set<string>>(new Set())
   const [isResumingIncomplete, setIsResumingIncomplete] = useState(false)
+  const [completedFIRs, setCompletedFIRs] = useState<Set<string>>(new Set())
+  const [isEditMode, setIsEditMode] = useState(false)
+  const [hasArgumentProceeding, setHasArgumentProceeding] = useState(false)
   const [proceedingFormData, setProceedingFormData] = useState({
     type: 'NOTICE_OF_MOTION' as ProceedingType,
     summary: '',
@@ -215,6 +218,7 @@ export default function FIRs() {
           setCurrentStep(1)
           setFormOpen(true)
           setIsResumingIncomplete(true)
+          setIsEditMode(false)
           // Clean up URL by removing query param
           const newSearchParams = new URLSearchParams(searchParams)
           newSearchParams.delete('resume')
@@ -224,6 +228,87 @@ export default function FIRs() {
         }
       }
       loadAndOpen()
+    }
+  }, [searchParams, setSearchParams])
+
+  // Handle edit parameter to edit completed FIR
+  useEffect(() => {
+    const editFirIdParam = searchParams.get('edit')
+    if (editFirIdParam) {
+      const editFirId = editFirIdParam
+      // Load the FIR and open form in Step 1 for editing
+      async function loadAndOpenForEdit() {
+        try {
+          // First verify FIR has completed proceedings
+          const proceedings = await fetchProceedingsByFIR(editFirId)
+          const hasCompletedProceedings = proceedings && proceedings.length > 0 && 
+            proceedings.some(p => !p.draft)
+          
+          if (!hasCompletedProceedings) {
+            setFormError('This writ has not been completed yet. Please complete it first before editing.')
+            const newSearchParams = new URLSearchParams(searchParams)
+            newSearchParams.delete('edit')
+            setSearchParams(newSearchParams, { replace: true })
+            return
+          }
+
+          // Check if FIR has ARGUMENT proceeding (first proceeding type)
+          const sortedProceedings = [...(proceedings || [])].sort((a, b) => (a.sequence || 0) - (b.sequence || 0))
+          const firstProceeding = sortedProceedings.find(p => !p.draft)
+          const hasArgument = firstProceeding?.type === 'ARGUMENT'
+          setHasArgumentProceeding(hasArgument || false)
+
+          const fir = await fetchFIRDetail(editFirId)
+          setFormData({
+            firNumber: fir.firNumber,
+            branchName: fir.branchName || '',
+            writNumber: fir.writNumber || '',
+            writType: fir.writType,
+            writYear: fir.writYear || CURRENT_YEAR,
+            writSubType: fir.writSubType || undefined,
+            writTypeOther: fir.writTypeOther || '',
+            underSection: fir.underSection || '',
+            act: fir.act || '',
+            policeStation: fir.policeStation || '',
+            dateOfFIR: fir.dateOfFIR ? new Date(fir.dateOfFIR).toISOString().split('T')[0] : '',
+            sections: fir.sections || [],
+            investigatingOfficers: fir.investigatingOfficers && fir.investigatingOfficers.length > 0 
+              ? fir.investigatingOfficers.map(io => ({
+                  name: io.name || '',
+                  rank: io.rank || '',
+                  posting: io.posting || '',
+                  contact: io.contact || 0,
+                  from: io.from ? new Date(io.from).toISOString().split('T')[0] : '',
+                  to: io.to ? new Date(io.to).toISOString().split('T')[0] : '',
+                }))
+              : [{ ...EMPTY_IO }],
+            petitionerName: fir.petitionerName || '',
+            petitionerFatherName: fir.petitionerFatherName || '',
+            petitionerAddress: fir.petitionerAddress || '',
+            petitionerPrayer: fir.petitionerPrayer || '',
+            respondents: (fir.respondents && Array.isArray(fir.respondents) 
+              ? fir.respondents.filter(r => typeof r === 'object' && r !== null).map(r => ({
+                  name: (r as RespondentDetail).name || '',
+                  designation: (r as RespondentDetail).designation || '',
+                }))
+              : [{ ...EMPTY_RESPONDENT }]),
+            status: (fir.status as FIRStatus) || undefined,
+            linkedWrits: [],
+          })
+          setCreatedFIRId(editFirId)
+          setCurrentStep(1)
+          setFormOpen(true)
+          setIsResumingIncomplete(false)
+          setIsEditMode(true)
+          // Clean up URL by removing query param
+          const newSearchParams = new URLSearchParams(searchParams)
+          newSearchParams.delete('edit')
+          setSearchParams(newSearchParams, { replace: true })
+        } catch (err) {
+          setFormError(err instanceof Error ? err.message : 'Failed to load FIR data for editing')
+        }
+      }
+      loadAndOpenForEdit()
     }
   }, [searchParams, setSearchParams])
 
@@ -259,8 +344,9 @@ export default function FIRs() {
         const data = await fetchFIRs()
         setFirs(data)
         
-        // Check for drafts for each FIR
+        // Check for drafts and completed status for each FIR
         const draftSet = new Set<string>()
+        const completedSet = new Set<string>()
         await Promise.all(
           data.map(async (fir) => {
             try {
@@ -268,12 +354,20 @@ export default function FIRs() {
               if (draft) {
                 draftSet.add(fir._id)
               }
+              // Check if FIR has completed proceedings
+              const proceedings = await fetchProceedingsByFIR(fir._id)
+              const hasCompletedProceedings = proceedings && proceedings.length > 0 && 
+                proceedings.some(p => !p.draft)
+              if (hasCompletedProceedings) {
+                completedSet.add(fir._id)
+              }
             } catch {
-              // Ignore errors when checking for drafts
+              // Ignore errors when checking for drafts/completion
             }
           })
         )
         setFirsWithDrafts(draftSet)
+        setCompletedFIRs(completedSet)
         setListError(null)
       } catch (err) {
         setListError(err instanceof Error ? err.message : 'Unable to fetch FIRs')
@@ -1007,6 +1101,13 @@ export default function FIRs() {
         return
       }
 
+      // Validate: If FIR has ARGUMENT proceeding, writ type must be QUASHING
+      if (isEditMode && hasArgumentProceeding && formData.writType !== 'QUASHING') {
+        setFormError('Cannot change writ type: This writ has an ARGUMENT proceeding, which requires the writ type to be QUASHING.')
+        setFormSubmitting(false)
+        return
+      }
+
       const payload: CreateFIRInput = {
         ...formData,
         // Status will be set when a proceeding with decisionDetails is created
@@ -1037,7 +1138,20 @@ export default function FIRs() {
       const freshData = await fetchFIRs()
       setFirs(freshData)
       
-      // Move to Step 2 with the FIR ID
+      // If editing completed writ, close form after update
+      if (isEditMode && updatedFIR && updatedFIR._id) {
+        setFormData(createInitialForm())
+        setCreatedFIRId(null)
+        setIsEditMode(false)
+        setHasArgumentProceeding(false)
+        setIsResumingIncomplete(false)
+        setCurrentStep(1)
+        setFormOpen(false)
+        setFormError(null)
+        return
+      }
+      
+      // Move to Step 2 with the FIR ID (only for new FIRs)
       if (updatedFIR && updatedFIR._id) {
         setCurrentStep(2)
         // Pre-fill proceeding form with FIR date if not already set
@@ -1051,6 +1165,8 @@ export default function FIRs() {
       } else {
         setFormError('FIR saved but could not proceed to next step. Please create proceeding manually.')
         setFormData(createInitialForm())
+        setIsEditMode(false)
+        setHasArgumentProceeding(false)
         setFormOpen(false)
       }
     } catch (err) {
@@ -1300,6 +1416,8 @@ export default function FIRs() {
       setOrderOfProceedingFile(null)
       setCreatedFIRId(null)
       setIsResumingIncomplete(false)
+      setIsEditMode(false)
+      setHasArgumentProceeding(false)
       setCurrentStep(1)
       setFormOpen(false)
       // Refresh FIRs list
@@ -1586,7 +1704,19 @@ export default function FIRs() {
         </div>
         <button
           type="button"
-          onClick={() => setFormOpen((v) => !v)}
+          onClick={() => {
+            if (formOpen) {
+              // Reset form state when closing
+              setFormData(createInitialForm())
+              setCreatedFIRId(null)
+              setIsEditMode(false)
+              setIsResumingIncomplete(false)
+              setHasArgumentProceeding(false)
+              setCurrentStep(1)
+              setFormError(null)
+            }
+            setFormOpen((v) => !v)
+          }}
           className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
         >
           {formOpen ? 'Close Form' : 'Create New Writ'}
@@ -1613,48 +1743,64 @@ export default function FIRs() {
               </div>
             </div>
           )}
-          {/* Step Indicator */}
-          <div className="mb-6 flex items-center justify-center gap-4">
-            <div className="flex items-center gap-2">
-              <div className={`flex h-10 w-10 items-center justify-center rounded-full border-2 ${
-                currentStep >= 1 ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-gray-300 bg-white text-gray-400'
-              }`}>
-                {currentStep > 1 ? (
-                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                ) : (
-                  <span className="text-sm font-semibold">1</span>
-                )}
-              </div>
-              <div className="hidden sm:block">
-                <div className={`text-sm font-medium ${currentStep >= 1 ? 'text-indigo-600' : 'text-gray-400'}`}>
-                  Step 1: Application Details
+          {/* Step Indicator - Hide Step 2 when editing completed writ */}
+          {!isEditMode && (
+            <div className="mb-6 flex items-center justify-center gap-4">
+              <div className="flex items-center gap-2">
+                <div className={`flex h-10 w-10 items-center justify-center rounded-full border-2 ${
+                  currentStep >= 1 ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-gray-300 bg-white text-gray-400'
+                }`}>
+                  {currentStep > 1 ? (
+                    <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  ) : (
+                    <span className="text-sm font-semibold">1</span>
+                  )}
                 </div>
-                <div className="text-xs text-gray-500">(6 Sections)</div>
+                <div className="hidden sm:block">
+                  <div className={`text-sm font-medium ${currentStep >= 1 ? 'text-indigo-600' : 'text-gray-400'}`}>
+                    Step 1: Application Details
+                  </div>
+                  <div className="text-xs text-gray-500">(6 Sections)</div>
+                </div>
+              </div>
+              <div className={`h-0.5 w-16 ${currentStep >= 2 ? 'bg-indigo-600' : 'bg-gray-300'}`} />
+              <div className="flex items-center gap-2">
+                <div className={`flex h-10 w-10 items-center justify-center rounded-full border-2 ${
+                  currentStep >= 2 ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-gray-300 bg-white text-gray-400'
+                }`}>
+                  <span className="text-sm font-semibold">2</span>
+                </div>
+                <div className="hidden sm:block">
+                  <div className={`text-sm font-medium ${currentStep >= 2 ? 'text-indigo-600' : 'text-gray-400'}`}>
+                    Step 2: Proceedings & Decision Details
+                  </div>
+                  <div className="text-xs text-gray-500">(3 Sections)</div>
+                </div>
               </div>
             </div>
-            <div className={`h-0.5 w-16 ${currentStep >= 2 ? 'bg-indigo-600' : 'bg-gray-300'}`} />
-            <div className="flex items-center gap-2">
-              <div className={`flex h-10 w-10 items-center justify-center rounded-full border-2 ${
-                currentStep >= 2 ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-gray-300 bg-white text-gray-400'
-              }`}>
-                <span className="text-sm font-semibold">2</span>
-              </div>
-              <div className="hidden sm:block">
-                <div className={`text-sm font-medium ${currentStep >= 2 ? 'text-indigo-600' : 'text-gray-400'}`}>
-                  Step 2: Proceedings & Decision Details
+          )}
+          {isEditMode && (
+            <div className="mb-6 flex items-center justify-center">
+              <div className="text-center">
+                <div className="text-lg font-semibold text-indigo-600">
+                  Update Writ Form
                 </div>
-                <div className="text-xs text-gray-500">(3 Sections)</div>
+                <div className="text-xs text-gray-500 mt-1">Update writ application details</div>
               </div>
             </div>
-          </div>
+          )}
 
           {currentStep === 1 ? (
             <>
-              <h2 className="text-lg font-semibold text-gray-900">Add New Writ Application</h2>
+              <h2 className="text-lg font-semibold text-gray-900">
+                {isEditMode ? 'Edit Writ Application' : 'Add New Writ Application'}
+              </h2>
               <p className="text-sm text-gray-500">
-                Capture branch, writ, FIR, officer, petitioner and respondent details exactly as filed in the application.
+                {isEditMode 
+                  ? 'Update branch, writ, FIR, officer, petitioner and respondent details.'
+                  : 'Capture branch, writ, FIR, officer, petitioner and respondent details exactly as filed in the application.'}
               </p>
               <form className="mt-4 space-y-6" onSubmit={handleSubmit}>
             <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
@@ -1675,22 +1821,38 @@ export default function FIRs() {
               <div className="mt-4 grid gap-4 md:grid-cols-2">
                 <label className="text-sm font-medium text-gray-700">
                   Type of Writ<span className="text-red-500 ml-1">*</span>
+                  {isEditMode && hasArgumentProceeding && (
+                    <div className="mt-1 mb-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                      This writ has an ARGUMENT proceeding, so the writ type must remain QUASHING.
+                    </div>
+                  )}
                   <select
-                    className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                    className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 disabled:bg-gray-100 disabled:cursor-not-allowed"
                     value={formData.writType}
                     onChange={(e) => {
                       const value = e.target.value as WritType
+                      // Prevent changing writ type if has ARGUMENT proceeding
+                      if (isEditMode && hasArgumentProceeding && value !== 'QUASHING') {
+                        setFormError('Cannot change writ type: This writ has an ARGUMENT proceeding, which requires the writ type to be QUASHING.')
+                        return
+                      }
                       setFormData((prev) => ({
                         ...prev,
                         writType: value,
                         writSubType: value === 'BAIL' ? prev.writSubType || 'ANTICIPATORY' : undefined,
                         writTypeOther: value === 'ANY_OTHER' ? prev.writTypeOther : '',
                       }))
+                      setFormError(null)
                     }}
+                    disabled={isEditMode && hasArgumentProceeding}
                     required
                   >
                     {WRIT_TYPE_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
+                      <option 
+                        key={opt.value} 
+                        value={opt.value}
+                        disabled={isEditMode && hasArgumentProceeding && opt.value !== 'QUASHING'}
+                      >
                         {opt.label}
                       </option>
                     ))}
@@ -1981,17 +2143,20 @@ export default function FIRs() {
                   setFormError(null)
                   setCurrentStep(1)
                   setCreatedFIRId(null)
+                  setIsEditMode(false)
+                  setIsResumingIncomplete(false)
+                  setHasArgumentProceeding(false)
                 }}
                 className="text-sm font-medium text-indigo-600 hover:underline"
               >
-                BACK
+                {isEditMode ? 'CANCEL' : 'BACK'}
               </button>
               <button
                 type="submit"
                 disabled={formSubmitting}
                 className="rounded-md bg-indigo-600 px-6 py-2.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
               >
-                {formSubmitting ? 'Saving...' : 'NEXT'}
+                {formSubmitting ? (isEditMode ? 'Updating...' : 'Saving...') : (isEditMode ? 'UPDATE WRIT' : 'NEXT')}
               </button>
             </div>
           </form>
@@ -3084,19 +3249,20 @@ export default function FIRs() {
                 <th className="px-4 py-3">Respondents</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Date of FIR</th>
+                <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y text-sm text-gray-700">
               {loading && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-6 text-center text-gray-500">
+                  <td colSpan={9} className="px-4 py-6 text-center text-gray-500">
                     Loading writs…
                   </td>
                 </tr>
               )}
               {!loading && visibleFirs.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-6 text-center text-gray-500">
+                  <td colSpan={9} className="px-4 py-6 text-center text-gray-500">
                     No writs match the selected filters.
                   </td>
                 </tr>
@@ -3220,6 +3386,21 @@ export default function FIRs() {
                       </span>
                     </td>
                     <td className="px-4 py-3">{formatDate(fir.dateOfFIR || fir.dateOfFiling)}</td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        {completedFIRs.has(fir._id) && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              navigate(`/firs?edit=${fir._id}`)
+                            }}
+                            className="rounded-md border border-gray-600 px-3 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50"
+                          >
+                            Edit
+                          </button>
+                        )}
+                      </div>
+                    </td>
                 </tr>
                 )
               })}
