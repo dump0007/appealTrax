@@ -87,6 +87,7 @@ export default function FIRs() {
   const [isResumingIncomplete, setIsResumingIncomplete] = useState(false)
   const [completedFIRs, setCompletedFIRs] = useState<Set<string>>(new Set())
   const [isEditMode, setIsEditMode] = useState(false)
+  const [loadingEditData, setLoadingEditData] = useState(false)
   const [hasArgumentProceeding, setHasArgumentProceeding] = useState(false)
   const [proceedingFormData, setProceedingFormData] = useState({
     type: 'NOTICE_OF_MOTION' as ProceedingType,
@@ -236,6 +237,7 @@ export default function FIRs() {
     const editFirIdParam = searchParams.get('edit')
     if (editFirIdParam) {
       const editFirId = editFirIdParam
+      setLoadingEditData(true)
       // Load the FIR and open form in Step 1 for editing
       async function loadAndOpenForEdit() {
         try {
@@ -249,6 +251,7 @@ export default function FIRs() {
             const newSearchParams = new URLSearchParams(searchParams)
             newSearchParams.delete('edit')
             setSearchParams(newSearchParams, { replace: true })
+            setLoadingEditData(false)
             return
           }
 
@@ -300,15 +303,19 @@ export default function FIRs() {
           setFormOpen(true)
           setIsResumingIncomplete(false)
           setIsEditMode(true)
+          setLoadingEditData(false)
           // Clean up URL by removing query param
           const newSearchParams = new URLSearchParams(searchParams)
           newSearchParams.delete('edit')
           setSearchParams(newSearchParams, { replace: true })
         } catch (err) {
           setFormError(err instanceof Error ? err.message : 'Failed to load FIR data for editing')
+          setLoadingEditData(false)
         }
       }
       loadAndOpenForEdit()
+    } else {
+      setLoadingEditData(false)
     }
   }, [searchParams, setSearchParams])
 
@@ -1681,6 +1688,18 @@ export default function FIRs() {
       }
       return { ...prev, noticeOfMotion: updated }
     })
+  }
+
+  // Show loader when loading edit data
+  if (loadingEditData) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+          <p className="text-sm font-medium text-gray-700">Loading writ data for editing...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
