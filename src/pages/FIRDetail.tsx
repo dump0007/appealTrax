@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { createProceeding, fetchFIRDetail, fetchProceedingsByFIR, fetchDraftProceedingByFIR, fetchProceedingDetail, updateProceeding } from '../lib/api'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import { createProceeding, fetchFIRDetail, fetchProceedingsByFIR, fetchDraftProceedingByFIR } from '../lib/api'
 import { useAuthStore, useApiCacheStore } from '../store'
 import type { FIR, Proceeding, ProceedingType, CourtAttendanceMode, CreateProceedingInput, NoticeOfMotionDetails, AnyOtherDetails, PersonDetails, WritStatus, ReplyTrackingDetails } from '../types'
 
@@ -25,20 +25,12 @@ function convertToReplyTracking(entry: NoticeOfMotionDetails): ReplyTrackingDeta
 export default function FIRDetail() {
   const { firId } = useParams<{ firId: string }>()
   const navigate = useNavigate()
-  const [searchParams, setSearchParams] = useSearchParams()
   const user = useAuthStore((s) => s.currentUser)
   const [fir, setFir] = useState<FIR | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [localProceedings, setLocalProceedings] = useState<Proceeding[]>([])
   const [showForm, setShowForm] = useState(false)
-  const [showEditForm, setShowEditForm] = useState(false)
-  const [editingProceedingId, setEditingProceedingId] = useState<string | null>(null)
-  const [isEditMode, setIsEditMode] = useState(false)
-  const [originalProceedingData, setOriginalProceedingData] = useState<Proceeding | null>(null)
-  const [showConfirmModal, setShowConfirmModal] = useState(false)
-  const [filesToDelete, setFilesToDelete] = useState<string[]>([])
-  const [proceedingTypeChanged, setProceedingTypeChanged] = useState(false)
   const [formData, setFormData] = useState({
     fir: '',
     type: 'NOTICE_OF_MOTION' as ProceedingType,
@@ -363,242 +355,6 @@ export default function FIRDetail() {
     load()
   }, [firId])
 
-  // Handle edit proceeding mode
-  useEffect(() => {
-    const editProceedingId = searchParams.get('editProceeding')
-    if (editProceedingId && firId) {
-      async function loadProceedingForEdit() {
-        try {
-          // Verify FIR has completed proceedings
-          const hasCompletedProceedings = localProceedings && localProceedings.length > 0 && 
-            localProceedings.some(p => !p.draft)
-          
-          if (!hasCompletedProceedings) {
-            setError('Cannot edit proceeding: FIR must be fully completed before editing.')
-            const newSearchParams = new URLSearchParams(searchParams)
-            newSearchParams.delete('editProceeding')
-            setSearchParams(newSearchParams, { replace: true })
-            return
-          }
-
-          const proceeding = await fetchProceedingDetail(editProceedingId!)
-          setOriginalProceedingData(proceeding)
-          setEditingProceedingId(editProceedingId)
-          setIsEditMode(true)
-          setShowEditForm(true)
-          setShowForm(false)
-          
-          // Load proceeding data into form
-          const normalizePerson = (person?: { name?: string | null; rank?: string | null; mobile?: string | null } | null) => ({
-            name: person?.name || '',
-            rank: person?.rank || '',
-            mobile: person?.mobile || '',
-          })
-
-          const normalizeInvestigatingOfficer = (nom: any) => {
-            if (nom?.investigatingOfficer) {
-              return normalizePerson(nom.investigatingOfficer)
-            }
-            if (nom?.investigatingOfficerName) {
-              return {
-                name: nom.investigatingOfficerName || '',
-                rank: '',
-                mobile: '',
-              }
-            }
-            return { name: '', rank: '', mobile: '' }
-          }
-
-          let noticeOfMotionArray: NoticeOfMotionDetails[] = []
-          
-          if (proceeding.type === 'TO_FILE_REPLY' && proceeding.replyTracking) {
-            if (Array.isArray(proceeding.replyTracking)) {
-              noticeOfMotionArray = proceeding.replyTracking.map((rt: any) => ({
-                attendanceMode: 'BY_FORMAT' as CourtAttendanceMode,
-                formatSubmitted: undefined,
-                formatFilledBy: undefined,
-                appearingAG: undefined,
-                appearingAGDetails: undefined,
-                aagDgWhoWillAppear: undefined,
-                attendingOfficer: undefined,
-                attendingOfficerDetails: undefined,
-                investigatingOfficer: undefined,
-                details: '',
-                officerDeputedForReply: rt.officerDeputedForReply || '',
-                vettingOfficerDetails: rt.vettingOfficerDetails || '',
-                replyFiled: rt.replyFiled || false,
-                replyFilingDate: rt.replyFilingDate ? formatDateInputValue(rt.replyFilingDate) : '',
-                advocateGeneralName: rt.advocateGeneralName || '',
-                replyScrutinizedByHC: rt.replyScrutinizedByHC || false,
-                investigatingOfficerName: rt.investigatingOfficerName || '',
-                proceedingInCourt: rt.proceedingInCourt || '',
-                orderInShort: rt.orderInShort || '',
-                nextActionablePoint: rt.nextActionablePoint || '',
-                nextDateOfHearingReply: rt.nextDateOfHearingReply ? formatDateInputValue(rt.nextDateOfHearingReply) : '',
-              }))
-            } else {
-              const rt = proceeding.replyTracking
-              noticeOfMotionArray = [{
-                attendanceMode: 'BY_FORMAT' as CourtAttendanceMode,
-                formatSubmitted: undefined,
-                formatFilledBy: undefined,
-                appearingAG: undefined,
-                appearingAGDetails: undefined,
-                aagDgWhoWillAppear: undefined,
-                attendingOfficer: undefined,
-                attendingOfficerDetails: undefined,
-                investigatingOfficer: undefined,
-                details: '',
-                officerDeputedForReply: rt.officerDeputedForReply || '',
-                vettingOfficerDetails: rt.vettingOfficerDetails || '',
-                replyFiled: rt.replyFiled || false,
-                replyFilingDate: rt.replyFilingDate ? formatDateInputValue(rt.replyFilingDate) : '',
-                advocateGeneralName: rt.advocateGeneralName || '',
-                replyScrutinizedByHC: rt.replyScrutinizedByHC || false,
-                investigatingOfficerName: rt.investigatingOfficerName || '',
-                proceedingInCourt: rt.proceedingInCourt || '',
-                orderInShort: rt.orderInShort || '',
-                nextActionablePoint: rt.nextActionablePoint || '',
-                nextDateOfHearingReply: rt.nextDateOfHearingReply ? formatDateInputValue(rt.nextDateOfHearingReply) : '',
-              }]
-            }
-          } else if (proceeding.noticeOfMotion) {
-            if (Array.isArray(proceeding.noticeOfMotion)) {
-              noticeOfMotionArray = proceeding.noticeOfMotion.map(nom => ({
-                attendanceMode: nom.attendanceMode || 'BY_FORMAT',
-                formatSubmitted: nom.formatSubmitted || false,
-                formatFilledBy: normalizePerson(nom.formatFilledBy),
-                appearingAG: undefined,
-                appearingAGDetails: nom.attendanceMode === 'BY_PERSON' ? (nom.appearingAGDetails || '') : undefined,
-                aagDgWhoWillAppear: nom.attendanceMode === 'BY_FORMAT' ? (nom.aagDgWhoWillAppear || '') : undefined,
-                attendingOfficer: undefined,
-                attendingOfficerDetails: nom.attendanceMode === 'BY_PERSON' ? (nom.attendingOfficerDetails || '') : undefined,
-                investigatingOfficer: normalizeInvestigatingOfficer(nom),
-                details: nom.details || '',
-                officerDeputedForReply: undefined,
-                vettingOfficerDetails: undefined,
-                replyFiled: undefined,
-                replyFilingDate: undefined,
-                advocateGeneralName: undefined,
-                replyScrutinizedByHC: undefined,
-                investigatingOfficerName: undefined,
-                proceedingInCourt: undefined,
-                orderInShort: undefined,
-                nextActionablePoint: undefined,
-                nextDateOfHearingReply: undefined,
-              }))
-            } else {
-              const nom = proceeding.noticeOfMotion
-              noticeOfMotionArray = [{
-                attendanceMode: nom.attendanceMode || 'BY_FORMAT',
-                formatSubmitted: nom.formatSubmitted || false,
-                formatFilledBy: normalizePerson(nom.formatFilledBy),
-                appearingAG: undefined,
-                appearingAGDetails: nom.attendanceMode === 'BY_PERSON' ? (nom.appearingAGDetails || '') : undefined,
-                aagDgWhoWillAppear: nom.attendanceMode === 'BY_FORMAT' ? (nom.aagDgWhoWillAppear || '') : undefined,
-                attendingOfficer: undefined,
-                attendingOfficerDetails: nom.attendanceMode === 'BY_PERSON' ? (nom.attendingOfficerDetails || '') : undefined,
-                investigatingOfficer: normalizeInvestigatingOfficer(nom),
-                details: nom.details || '',
-                officerDeputedForReply: undefined,
-                vettingOfficerDetails: undefined,
-                replyFiled: undefined,
-                replyFilingDate: undefined,
-                advocateGeneralName: undefined,
-                replyScrutinizedByHC: undefined,
-                investigatingOfficerName: undefined,
-                proceedingInCourt: undefined,
-                orderInShort: undefined,
-                nextActionablePoint: undefined,
-                nextDateOfHearingReply: undefined,
-              }]
-            }
-          }
-
-          const argumentDetailsArray = proceeding.argumentDetails
-            ? (Array.isArray(proceeding.argumentDetails) ? proceeding.argumentDetails : [proceeding.argumentDetails]).map((arg: any) => ({
-                argumentBy: arg.argumentBy || '',
-                argumentWith: arg.argumentWith || '',
-                nextDateOfHearing: arg.nextDateOfHearing ? formatDateInputValue(arg.nextDateOfHearing) : '',
-              }))
-            : [{
-                argumentBy: '',
-                argumentWith: '',
-                nextDateOfHearing: '',
-              }]
-
-          const anyOtherDetailsArray = proceeding.anyOtherDetails
-            ? (Array.isArray(proceeding.anyOtherDetails) ? proceeding.anyOtherDetails : [proceeding.anyOtherDetails]).map((aod: any) => ({
-                attendingOfficerDetails: aod.attendingOfficerDetails || '',
-                officerDetails: normalizePerson(aod.officerDetails),
-                appearingAGDetails: aod.appearingAGDetails || '',
-                details: aod.details || '',
-              }))
-            : [{
-                attendingOfficerDetails: '',
-                officerDetails: { name: '', rank: '', mobile: '' },
-                appearingAGDetails: '',
-                details: '',
-              }]
-
-          setFormData({
-            fir: firId!,
-            type: proceeding.type,
-            summary: proceeding.summary || '',
-            details: proceeding.details || '',
-            hearingDetails: {
-              dateOfHearing: proceeding.hearingDetails?.dateOfHearing ? formatDateInputValue(proceeding.hearingDetails.dateOfHearing) : '',
-              judgeName: proceeding.hearingDetails?.judgeName || '',
-              courtNumber: proceeding.hearingDetails?.courtNumber || '',
-            },
-            noticeOfMotion: noticeOfMotionArray.length > 0 ? noticeOfMotionArray : [{
-              attendanceMode: 'BY_FORMAT' as CourtAttendanceMode,
-              formatSubmitted: false,
-              formatFilledBy: { name: '', rank: '', mobile: '' },
-              aagDgWhoWillAppear: '',
-              appearingAGDetails: '',
-              attendingOfficerDetails: '',
-              investigatingOfficer: { name: '', rank: '', mobile: '' },
-              details: '',
-              officerDeputedForReply: '',
-              vettingOfficerDetails: '',
-              replyFiled: false,
-              replyFilingDate: '',
-              advocateGeneralName: '',
-              replyScrutinizedByHC: false,
-              investigatingOfficerName: '',
-              proceedingInCourt: '',
-              orderInShort: '',
-              nextActionablePoint: '',
-              nextDateOfHearingReply: '',
-            }],
-            replyTracking: {
-              proceedingInCourt: '',
-              orderInShort: '',
-              nextActionablePoint: '',
-              nextDateOfHearing: '',
-            },
-            argumentDetails: argumentDetailsArray,
-            anyOtherDetails: anyOtherDetailsArray,
-            decisionDetails: {
-              writStatus: proceeding.decisionDetails?.writStatus,
-              dateOfDecision: proceeding.decisionDetails?.dateOfDecision ? formatDateInputValue(proceeding.decisionDetails.dateOfDecision) : '',
-              decisionByCourt: proceeding.decisionDetails?.decisionByCourt || '',
-              remarks: proceeding.decisionDetails?.remarks || '',
-            },
-          })
-
-          // Clean up URL
-          const newSearchParams = new URLSearchParams(searchParams)
-          newSearchParams.delete('editProceeding')
-          setSearchParams(newSearchParams, { replace: true })
-        } catch (err) {
-          setError(err instanceof Error ? err.message : 'Failed to load proceeding for editing')
-        }
-      }
-      loadProceedingForEdit()
-    }
-  }, [searchParams, firId, localProceedings, setSearchParams])
 
   const sortedProceedings = useMemo(() => {
     return [...localProceedings].sort((a, b) => {
@@ -972,308 +728,6 @@ export default function FIRDetail() {
     }
   }
 
-  async function handleProceedingUpdate(event: React.FormEvent) {
-    event.preventDefault()
-    if (!editingProceedingId || !formData.fir || !formData.hearingDetails.dateOfHearing) {
-      setError('Please fill in required fields (Hearing Date)')
-      return
-    }
-
-    if (!user?.token) {
-      setError('Authentication required')
-      return
-    }
-
-    if (!firId) {
-      setError('FIR ID is missing')
-      return
-    }
-
-    // Show confirmation modal
-    setShowConfirmModal(true)
-  }
-
-  async function confirmProceedingUpdate() {
-    if (!editingProceedingId || !formData.fir || !formData.hearingDetails.dateOfHearing) {
-      setError('Please fill in required fields (Hearing Date)')
-      setShowConfirmModal(false)
-      return
-    }
-
-    if (!user?.token) {
-      setError('Authentication required')
-      setShowConfirmModal(false)
-      return
-    }
-
-    if (!firId) {
-      setError('FIR ID is missing')
-      setShowConfirmModal(false)
-      return
-    }
-
-    try {
-      setError(null)
-
-      // Validate file if present
-      if (orderOfProceedingFile) {
-        const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel']
-        if (!allowedTypes.includes(orderOfProceedingFile.type)) {
-          setError('Invalid file type. Only PDF, PNG, JPEG, JPG, and Excel files are allowed.')
-          setShowConfirmModal(false)
-          return
-        }
-      }
-
-      const payload: CreateProceedingInput = {
-        fir: firId,
-        type: formData.type,
-        summary: formData.summary || undefined,
-        details: formData.details || undefined,
-        hearingDetails: formData.hearingDetails,
-      }
-
-      if (formData.type === 'NOTICE_OF_MOTION') {
-        payload.noticeOfMotion = formData.noticeOfMotion.length === 1 ? formData.noticeOfMotion[0] : formData.noticeOfMotion
-      } else if (formData.type === 'TO_FILE_REPLY') {
-        payload.replyTracking = formData.noticeOfMotion.length === 1 
-          ? convertToReplyTracking(formData.noticeOfMotion[0])
-          : formData.noticeOfMotion.map(convertToReplyTracking)
-      } else if (formData.type === 'ARGUMENT') {
-        payload.argumentDetails = formData.argumentDetails && formData.argumentDetails.length > 0 
-          ? (formData.argumentDetails.length === 1 ? formData.argumentDetails[0] : formData.argumentDetails)
-          : undefined
-      } else if (formData.type === 'ANY_OTHER') {
-        payload.anyOtherDetails = formData.anyOtherDetails && formData.anyOtherDetails.length > 0 
-          ? formData.anyOtherDetails
-          : undefined
-      }
-      
-      // Add Decision Details if writStatus is provided
-      if (formData.decisionDetails?.writStatus) {
-        payload.decisionDetails = formData.decisionDetails
-      }
-
-      // Prepare attachment files based on proceeding type
-      const attachmentFiles: {
-        noticeOfMotion?: Map<number, File>
-        replyTracking?: Map<number, File>
-        argumentDetails?: Map<number, File>
-        anyOtherDetails?: Map<number, File>
-        decisionDetails?: File
-      } = {}
-
-      if (formData.type === 'NOTICE_OF_MOTION' && noticeOfMotionFiles.size > 0) {
-        attachmentFiles.noticeOfMotion = noticeOfMotionFiles
-      } else if (formData.type === 'TO_FILE_REPLY' && replyTrackingFiles.size > 0) {
-        attachmentFiles.replyTracking = replyTrackingFiles
-      } else if (formData.type === 'ARGUMENT' && argumentFiles.size > 0) {
-        attachmentFiles.argumentDetails = argumentFiles
-      } else if (formData.type === 'ANY_OTHER' && anyOtherFiles.size > 0) {
-        attachmentFiles.anyOtherDetails = anyOtherFiles
-      }
-
-      if (decisionDetailsFile) {
-        attachmentFiles.decisionDetails = decisionDetailsFile
-      }
-
-      const updatedProceeding = await updateProceeding(
-        editingProceedingId,
-        payload, 
-        orderOfProceedingFile || undefined,
-        Object.keys(attachmentFiles).length > 0 ? attachmentFiles : undefined,
-        filesToDelete.length > 0 ? filesToDelete : undefined
-      )
-      
-      // Update local proceedings
-      setLocalProceedings((prev) => 
-        prev.map(p => p._id === editingProceedingId ? updatedProceeding : p)
-      )
-      
-      setShowEditForm(false)
-      setIsEditMode(false)
-      setEditingProceedingId(null)
-      setOriginalProceedingData(null)
-      setShowConfirmModal(false)
-      setFilesToDelete([])
-      setProceedingTypeChanged(false)
-      setOrderOfProceedingFile(null)
-      setNoticeOfMotionFiles(new Map())
-      setReplyTrackingFiles(new Map())
-      setArgumentFiles(new Map())
-      setAnyOtherFiles(new Map())
-      setDecisionDetailsFile(null)
-      
-      // Reset form
-      setFormData((prev) => ({
-        ...prev,
-        type: 'NOTICE_OF_MOTION',
-        summary: '',
-        details: '',
-        hearingDetails: {
-          dateOfHearing: '',
-          judgeName: '',
-          courtNumber: '',
-        },
-        noticeOfMotion: [{
-          attendanceMode: 'BY_FORMAT' as CourtAttendanceMode,
-          formatSubmitted: false,
-          formatFilledBy: { name: '', rank: '', mobile: '' },
-          aagDgWhoWillAppear: '',
-          appearingAGDetails: '',
-          attendingOfficerDetails: '',
-          investigatingOfficer: { name: '', rank: '', mobile: '' },
-          details: '',
-          officerDeputedForReply: '',
-          vettingOfficerDetails: '',
-          replyFiled: false,
-          replyFilingDate: '',
-          advocateGeneralName: '',
-          replyScrutinizedByHC: false,
-          investigatingOfficerName: '',
-          proceedingInCourt: '',
-          orderInShort: '',
-          nextActionablePoint: '',
-          nextDateOfHearingReply: '',
-        }],
-        replyTracking: {
-          proceedingInCourt: '',
-          orderInShort: '',
-          nextActionablePoint: '',
-          nextDateOfHearing: '',
-        },
-        argumentDetails: [{
-          argumentBy: '',
-          argumentWith: '',
-          nextDateOfHearing: '',
-        }],
-        anyOtherDetails: [{
-          attendingOfficerDetails: '',
-          officerDetails: { name: '', rank: '', mobile: '' },
-          appearingAGDetails: '',
-          details: '',
-        }],
-        decisionDetails: {
-          writStatus: undefined,
-          dateOfDecision: '',
-          decisionByCourt: '',
-          remarks: '',
-        },
-      }))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update proceeding')
-      setShowConfirmModal(false)
-    }
-  }
-
-  function handleProceedingTypeChange(newType: ProceedingType) {
-    if (!originalProceedingData) return
-    
-    const oldType = originalProceedingData.type
-    if (oldType === newType) {
-      setProceedingTypeChanged(false)
-      return
-    }
-
-    // Track files to delete
-    const filesToDeleteList: string[] = []
-    
-    // Delete old proceeding type files
-    if (oldType === 'NOTICE_OF_MOTION' && originalProceedingData.noticeOfMotion) {
-      const entries = Array.isArray(originalProceedingData.noticeOfMotion) 
-        ? originalProceedingData.noticeOfMotion 
-        : [originalProceedingData.noticeOfMotion]
-      entries.forEach(entry => {
-        if (entry.attachment) filesToDeleteList.push(entry.attachment)
-      })
-    } else if (oldType === 'TO_FILE_REPLY' && originalProceedingData.replyTracking) {
-      const entries = Array.isArray(originalProceedingData.replyTracking) 
-        ? originalProceedingData.replyTracking 
-        : [originalProceedingData.replyTracking]
-      entries.forEach(entry => {
-        if (entry.attachment) filesToDeleteList.push(entry.attachment)
-      })
-    } else if (oldType === 'ARGUMENT' && originalProceedingData.argumentDetails) {
-      const entries = Array.isArray(originalProceedingData.argumentDetails) 
-        ? originalProceedingData.argumentDetails 
-        : [originalProceedingData.argumentDetails]
-      entries.forEach(entry => {
-        if (entry.attachment) filesToDeleteList.push(entry.attachment)
-      })
-    } else if (oldType === 'ANY_OTHER' && originalProceedingData.anyOtherDetails) {
-      const entries = Array.isArray(originalProceedingData.anyOtherDetails) 
-        ? originalProceedingData.anyOtherDetails 
-        : [originalProceedingData.anyOtherDetails]
-      entries.forEach(entry => {
-        if (entry.attachment) filesToDeleteList.push(entry.attachment)
-      })
-    }
-
-    // Delete decision details file if it exists
-    if (originalProceedingData.decisionDetails?.attachment) {
-      filesToDeleteList.push(originalProceedingData.decisionDetails.attachment)
-    }
-
-    // Delete order of proceeding file if it exists
-    if (originalProceedingData.orderOfProceedingFilename) {
-      filesToDeleteList.push(originalProceedingData.orderOfProceedingFilename)
-    }
-
-    setFilesToDelete(filesToDeleteList)
-    setProceedingTypeChanged(true)
-    
-    // Clear form fields for new type
-    setFormData((prev) => ({
-      ...prev,
-      type: newType,
-      noticeOfMotion: newType === 'NOTICE_OF_MOTION' || newType === 'TO_FILE_REPLY' ? [{
-        attendanceMode: 'BY_FORMAT' as CourtAttendanceMode,
-        formatSubmitted: false,
-        formatFilledBy: { name: '', rank: '', mobile: '' },
-        aagDgWhoWillAppear: '',
-        appearingAGDetails: '',
-        attendingOfficerDetails: '',
-        investigatingOfficer: { name: '', rank: '', mobile: '' },
-        details: '',
-        officerDeputedForReply: '',
-        vettingOfficerDetails: '',
-        replyFiled: false,
-        replyFilingDate: '',
-        advocateGeneralName: '',
-        replyScrutinizedByHC: false,
-        investigatingOfficerName: '',
-        proceedingInCourt: '',
-        orderInShort: '',
-        nextActionablePoint: '',
-        nextDateOfHearingReply: '',
-      }] : prev.noticeOfMotion,
-      argumentDetails: newType === 'ARGUMENT' ? [{
-        argumentBy: '',
-        argumentWith: '',
-        nextDateOfHearing: '',
-      }] : prev.argumentDetails,
-      anyOtherDetails: newType === 'ANY_OTHER' ? [{
-        attendingOfficerDetails: '',
-        officerDetails: { name: '', rank: '', mobile: '' },
-        appearingAGDetails: '',
-        details: '',
-      }] : prev.anyOtherDetails,
-      decisionDetails: {
-        writStatus: undefined,
-        dateOfDecision: '',
-        decisionByCourt: '',
-        remarks: '',
-      },
-    }))
-    
-    // Clear file states
-    setOrderOfProceedingFile(null)
-    setNoticeOfMotionFiles(new Map())
-    setReplyTrackingFiles(new Map())
-    setArgumentFiles(new Map())
-    setAnyOtherFiles(new Map())
-    setDecisionDetailsFile(null)
-  }
 
   if (loading) {
     return (
@@ -1522,7 +976,7 @@ export default function FIRDetail() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
-                            navigate(`/firs/${firId}?editProceeding=${item._id}`)
+                            navigate(`/proceedings/${item._id}/edit`)
                           }}
                           className="rounded-md border border-gray-600 px-3 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50"
                         >
@@ -1552,20 +1006,18 @@ export default function FIRDetail() {
         </>
       )}
 
-      {(showForm || showEditForm) && (
+      {showForm && (
         <section className="rounded-xl border border-indigo-200 bg-indigo-50/30 p-6">
             {error && (
               <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                 {error}
               </div>
             )}
-            {isEditMode && (
-              <div className="mb-4">
-                <h2 className="text-2xl font-semibold text-gray-900">Update Proceeding Form</h2>
-                <p className="mt-1 text-sm text-gray-600">Update proceeding details below</p>
-              </div>
-            )}
-            <form onSubmit={isEditMode ? handleProceedingUpdate : handleProceedingSubmit} className="space-y-6">
+            <div className="mb-4">
+              <h2 className="text-2xl font-semibold text-gray-900">Record New Proceeding</h2>
+              <p className="mt-1 text-sm text-gray-600">Fill in the details for the new proceeding</p>
+            </div>
+            <form onSubmit={handleProceedingSubmit} className="space-y-6">
               {/* Section 0: FIR Selection (Read-only, pre-selected) */}
               <div className="rounded-lg border-2 border-indigo-200 bg-green-50/50 p-4 shadow-sm">
                 <h3 className="mb-2 text-sm font-semibold text-gray-900">Selected FIR</h3>
@@ -1645,11 +1097,7 @@ export default function FIRDetail() {
                     value={formData.type}
                     onChange={(e) => {
                       const newType = e.target.value as ProceedingType
-                      if (isEditMode) {
-                        handleProceedingTypeChange(newType)
-                      } else {
-                        setFormData((prev) => ({ ...prev, type: newType }))
-                      }
+                      setFormData((prev) => ({ ...prev, type: newType }))
                     }}
                     required
                   >
@@ -1661,11 +1109,6 @@ export default function FIRDetail() {
                       </option>
                     ))}
                   </select>
-                  {isEditMode && proceedingTypeChanged && (
-                    <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
-                      <strong>Warning:</strong> Changing the proceeding type will delete all files and data associated with the previous type. This action cannot be undone.
-                    </div>
-                  )}
                 </label>
 
                 {formData.type === 'NOTICE_OF_MOTION' && (
@@ -1840,56 +1283,6 @@ export default function FIRDetail() {
                               </label>
                             </>
                           )}
-                        <div className="md:col-span-2">
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            {entry.attendanceMode === 'BY_FORMAT' 
-                              ? 'Upload Doc of Proceeding (PDF, PNG, JPEG, JPG, Excel)' 
-                              : 'Upload Files (Person) (PDF, PNG, JPEG, JPG, Excel)'}
-                          </label>
-                          <input
-                            type="file"
-                            id={`notice-of-motion-file-firdetail-${index}`}
-                            accept=".pdf,.png,.jpeg,.jpg,.xlsx,.xls"
-                            className="block w-full text-sm text-gray-500 file:mr-4 file:rounded-md file:border-0 file:bg-indigo-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-indigo-700 hover:file:bg-indigo-100"
-                            onChange={(e) => {
-                              const file = e.target.files?.[0]
-                              if (file) {
-                                const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel']
-                                if (!allowedTypes.includes(file.type)) {
-                                  setError('Invalid file type. Only PDF, PNG, JPEG, JPG, and Excel files are allowed.')
-                                  e.target.value = ''
-                                  return
-                                }
-                                setNoticeOfMotionFiles(prev => {
-                                  const newMap = new Map(prev)
-                                  newMap.set(index, file)
-                                  return newMap
-                                })
-                                setError(null)
-                              }
-                            }}
-                          />
-                          {noticeOfMotionFiles.get(index) && (
-                            <div className="mt-2 flex items-center gap-2 text-sm text-gray-600">
-                              <span>{noticeOfMotionFiles.get(index)?.name}</span>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setNoticeOfMotionFiles(prev => {
-                                    const newMap = new Map(prev)
-                                    newMap.delete(index)
-                                    return newMap
-                                  })
-                                  const fileInput = document.getElementById(`notice-of-motion-file-firdetail-${index}`) as HTMLInputElement
-                                  if (fileInput) fileInput.value = ''
-                                }}
-                                className="text-red-600 hover:text-red-700"
-                              >
-                                ×
-                              </button>
-                            </div>
-                          )}
-                        </div>
                         <label className="md:col-span-2 text-sm font-medium text-gray-700">
                           Details of proceeding <span className="text-red-500">*</span>
                           <textarea
@@ -2172,7 +1565,7 @@ export default function FIRDetail() {
                               />
                               {replyTrackingFiles.get(index) && (
                                 <div className="flex items-center gap-2 text-sm text-gray-600">
-                                  <span>{replyTrackingFiles.get(index)?.name}</span>
+                                  <span className="font-medium text-indigo-700">New file: {replyTrackingFiles.get(index)?.name}</span>
                                   <button
                                     type="button"
                                     onClick={() => {
@@ -2298,7 +1691,7 @@ export default function FIRDetail() {
                               />
                               {argumentFiles.get(index) && (
                                 <div className="mt-2 flex items-center gap-2 text-sm text-gray-600">
-                                  <span>{argumentFiles.get(index)?.name}</span>
+                                  <span className="font-medium text-indigo-700">New file: {argumentFiles.get(index)?.name}</span>
                                   <button
                                     type="button"
                                     onClick={() => {
@@ -2466,7 +1859,7 @@ export default function FIRDetail() {
                             />
                             {anyOtherFiles.get(index) && (
                               <div className="flex items-center gap-2 text-sm text-gray-600">
-                                <span>{anyOtherFiles.get(index)?.name}</span>
+                                <span className="font-medium text-indigo-700">New file: {anyOtherFiles.get(index)?.name}</span>
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -2631,11 +2024,6 @@ export default function FIRDetail() {
                           </button>
                         </div>
                       )}
-                      {isEditMode && originalProceedingData?.orderOfProceedingFilename && !orderOfProceedingFile && (
-                        <p className="mt-2 text-sm text-gray-600">
-                          Current file: {originalProceedingData.orderOfProceedingFilename}
-                        </p>
-                      )}
                     </div>
                   </div>
                 </div>
@@ -2645,182 +2033,24 @@ export default function FIRDetail() {
                 <button
                   type="button"
                   onClick={() => {
-                    if (isEditMode) {
-                      setShowEditForm(false)
-                      setIsEditMode(false)
-                      setEditingProceedingId(null)
-                      setOriginalProceedingData(null)
-                      setFilesToDelete([])
-                      setProceedingTypeChanged(false)
-                      setOrderOfProceedingFile(null)
-                      setNoticeOfMotionFiles(new Map())
-                      setReplyTrackingFiles(new Map())
-                      setArgumentFiles(new Map())
-                      setAnyOtherFiles(new Map())
-                      setDecisionDetailsFile(null)
-                    } else {
-                      setShowForm(false)
-                      setIsResumingIncomplete(false)
-                    }
+                    setShowForm(false)
+                    setIsResumingIncomplete(false)
                   }}
                   className="text-sm font-medium text-indigo-600 hover:underline"
                 >
-                  {isEditMode ? 'CANCEL' : 'BACK'}
+                  BACK
                 </button>
                 <button
                   type="submit"
                   className="rounded-md bg-indigo-600 px-6 py-2.5 text-sm font-medium text-white hover:bg-indigo-700"
                 >
-                  {isEditMode ? 'UPDATE PROCEEDING' : 'FINAL SUBMIT'}
+                  FINAL SUBMIT
                 </button>
               </div>
             </form>
         </section>
       )}
 
-      {/* Confirmation Modal */}
-      {showConfirmModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-          <div className="rounded-lg bg-white p-6 shadow-xl max-w-2xl w-full mx-4">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Confirm Update</h3>
-            <div className="space-y-3 mb-6">
-              <p className="text-sm text-gray-700">
-                Are you sure you want to update this proceeding? This action will:
-              </p>
-              <ul className="list-disc list-inside text-sm text-gray-600 space-y-1 ml-4">
-                <li>Update all proceeding details</li>
-                {proceedingTypeChanged && (
-                  <li className="text-amber-700 font-medium">
-                    Delete all files and data from the previous proceeding type
-                  </li>
-                )}
-                {filesToDelete.length > 0 && (
-                  <li className="text-amber-700 font-medium">
-                    Delete {filesToDelete.length} file(s) that are no longer needed
-                  </li>
-                )}
-              </ul>
-              {proceedingTypeChanged && (
-                <div className="mt-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
-                  <strong>Warning:</strong> This action cannot be undone. All data and files from the previous proceeding type will be permanently deleted.
-                </div>
-              )}
-            </div>
-            <div className="flex items-center justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setShowConfirmModal(false)}
-                className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={confirmProceedingUpdate}
-                className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
-              >
-                Confirm Update
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Confirmation Modal */}
-      {showConfirmModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-          <div className="rounded-lg bg-white p-6 shadow-xl max-w-2xl w-full mx-4">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Confirm Update</h3>
-            <div className="space-y-3 mb-6">
-              <p className="text-sm text-gray-700">
-                Are you sure you want to update this proceeding? This action will:
-              </p>
-              <ul className="list-disc list-inside text-sm text-gray-600 space-y-1 ml-4">
-                <li>Update all proceeding details</li>
-                {proceedingTypeChanged && (
-                  <li className="text-amber-700 font-medium">
-                    Delete all files and data from the previous proceeding type
-                  </li>
-                )}
-                {filesToDelete.length > 0 && (
-                  <li className="text-amber-700 font-medium">
-                    Delete {filesToDelete.length} file(s) that are no longer needed
-                  </li>
-                )}
-              </ul>
-              {proceedingTypeChanged && (
-                <div className="mt-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
-                  <strong>Warning:</strong> This action cannot be undone. All data and files from the previous proceeding type will be permanently deleted.
-                </div>
-              )}
-            </div>
-            <div className="flex items-center justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setShowConfirmModal(false)}
-                className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={confirmProceedingUpdate}
-                className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
-              >
-                Confirm Update
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Confirmation Modal */}
-      {showConfirmModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-          <div className="rounded-lg bg-white p-6 shadow-xl max-w-2xl w-full mx-4">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Confirm Update</h3>
-            <div className="space-y-3 mb-6">
-              <p className="text-sm text-gray-700">
-                Are you sure you want to update this proceeding? This action will:
-              </p>
-              <ul className="list-disc list-inside text-sm text-gray-600 space-y-1 ml-4">
-                <li>Update all proceeding details</li>
-                {proceedingTypeChanged && (
-                  <li className="text-amber-700 font-medium">
-                    Delete all files and data from the previous proceeding type
-                  </li>
-                )}
-                {filesToDelete.length > 0 && (
-                  <li className="text-amber-700 font-medium">
-                    Delete {filesToDelete.length} file(s) that are no longer needed
-                  </li>
-                )}
-              </ul>
-              {proceedingTypeChanged && (
-                <div className="mt-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
-                  <strong>Warning:</strong> This action cannot be undone. All data and files from the previous proceeding type will be permanently deleted.
-                </div>
-              )}
-            </div>
-            <div className="flex items-center justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setShowConfirmModal(false)}
-                className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={confirmProceedingUpdate}
-                className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
-              >
-                Confirm Update
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

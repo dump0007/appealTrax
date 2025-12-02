@@ -8,6 +8,7 @@ import FIRs from './pages/FIRs'
 import FIRDetail from './pages/FIRDetail'
 import Proceedings from './pages/Proceedings'
 import ProceedingDetail from './pages/ProceedingDetail'
+import EditProceeding from './pages/EditProceeding'
 import NotFound from './pages/NotFound'
 
 export default function App() {
@@ -30,6 +31,7 @@ export default function App() {
         <Route path="firs/:firId" element={<FIRDetail />} />
         <Route path="proceedings" element={<Proceedings />} />
         <Route path="proceedings/:proceedingId" element={<ProceedingDetail />} />
+        <Route path="proceedings/:proceedingId/edit" element={<EditProceeding />} />
       </Route>
       <Route path="*" element={<NotFound />} />
     </Routes>

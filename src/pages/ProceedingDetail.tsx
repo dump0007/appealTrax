@@ -43,12 +43,6 @@ function getFileIcon(fileName: string): string {
   return '📎'
 }
 
-function getFileUrl(filename: string): string {
-  // For authenticated downloads, we'll use fetch with Authorization header
-  // This function returns the URL, but downloads should be handled via download handler
-  return `${API_BASE_URL}/assets/proceedings/${filename}`
-}
-
 async function downloadFile(filename: string, displayName: string) {
   const token = useAuthStore.getState().currentUser?.token
   if (!token) {
@@ -59,7 +53,7 @@ async function downloadFile(filename: string, displayName: string) {
   try {
     const response = await fetch(`${API_BASE_URL}/assets/proceedings/${filename}`, {
       headers: {
-        'Authorization': `Bearer ${token}`,
+        'x-access-token': token,
       },
     })
 
@@ -108,6 +102,9 @@ export default function ProceedingDetail() {
         setLoading(true)
         setError(null)
         const data = await fetchProceedingDetail(proceedingId)
+        console.log('[ProceedingDetail] Loaded proceeding data:', data)
+        console.log('[ProceedingDetail] Decision Details:', data.decisionDetails)
+        console.log('[ProceedingDetail] Decision Details attachment:', data.decisionDetails?.attachment)
         setProceeding(data)
         
         // Check if FIR is completed (has non-draft proceedings)
@@ -203,8 +200,7 @@ export default function ProceedingDetail() {
           {canEdit && fir && (
             <button
               onClick={() => {
-                const firId = typeof proceeding.fir === 'object' ? proceeding.fir._id : proceeding.fir
-                navigate(`/firs/${firId}?editProceeding=${proceedingId}`)
+                navigate(`/proceedings/${proceedingId}/edit`)
               }}
               className="rounded-md border border-gray-600 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
             >
@@ -644,20 +640,23 @@ export default function ProceedingDetail() {
                 </p>
               </div>
             )}
-            {proceeding.decisionDetails.attachment && (
-              <div>
-                <span className="text-sm font-medium text-gray-700">Decision Document</span>
+            {(proceeding.decisionDetails?.attachment || proceeding.orderOfProceedingFilename) && (
+              <div className="md:col-span-2">
+                <span className="text-sm font-medium text-gray-700">Attachment</span>
                 <div className="mt-1">
-                  <a
-                    href={getFileUrl(proceeding.decisionDetails.attachment)}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <button
+                    onClick={() => {
+                      const attachment = proceeding.decisionDetails?.attachment || proceeding.orderOfProceedingFilename
+                      if (attachment) {
+                        downloadFile(attachment, attachment)
+                      }
+                    }}
                     className="inline-flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-700 hover:underline"
                   >
-                    <span>{getFileIcon(proceeding.decisionDetails.attachment)}</span>
-                    <span>{proceeding.decisionDetails.attachment}</span>
+                    <span>{getFileIcon(proceeding.decisionDetails?.attachment || proceeding.orderOfProceedingFilename || '')}</span>
+                    <span>{proceeding.decisionDetails?.attachment || proceeding.orderOfProceedingFilename}</span>
                     <span className="text-xs">(Download)</span>
-                  </a>
+                  </button>
                 </div>
               </div>
             )}
@@ -666,11 +665,11 @@ export default function ProceedingDetail() {
       )}
 
       {/* Attachments Section */}
-      {(proceeding.attachments && proceeding.attachments.length > 0) || proceeding.orderOfProceedingFilename ? (
+      {(proceeding.attachments && proceeding.attachments.length > 0) || (proceeding.orderOfProceedingFilename && !proceeding.decisionDetails?.attachment) ? (
         <section className="rounded-xl border bg-white p-6">
           <h2 className="text-xl font-semibold text-gray-900">Attachments</h2>
           <div className="mt-4 space-y-3">
-            {proceeding.orderOfProceedingFilename && (
+            {proceeding.orderOfProceedingFilename && !proceeding.decisionDetails?.attachment && (
               <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 p-3">
                 <div className="flex items-center gap-3">
                   <span className="text-lg">{getFileIcon(proceeding.orderOfProceedingFilename)}</span>
