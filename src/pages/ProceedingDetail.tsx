@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
-import { fetchProceedingDetail } from '../lib/api'
+import { fetchProceedingDetail, fetchProceedingsByFIR } from '../lib/api'
 import { useAuthStore } from '../store'
 import type { Proceeding } from '../types'
 
@@ -90,6 +90,7 @@ export default function ProceedingDetail() {
   const [proceeding, setProceeding] = useState<Proceeding | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [canEdit, setCanEdit] = useState(false)
 
   // Determine navigation source
   const navigationSource = location.state as { from?: string; firId?: string } | null
@@ -108,6 +109,19 @@ export default function ProceedingDetail() {
         setError(null)
         const data = await fetchProceedingDetail(proceedingId)
         setProceeding(data)
+        
+        // Check if FIR is completed (has non-draft proceedings)
+        if (data.fir) {
+          const firId = typeof data.fir === 'object' ? data.fir._id : data.fir
+          try {
+            const proceedings = await fetchProceedingsByFIR(firId)
+            const hasCompletedProceedings = proceedings && proceedings.length > 0 && 
+              proceedings.some(p => !p.draft)
+            setCanEdit(hasCompletedProceedings || false)
+          } catch {
+            setCanEdit(false)
+          }
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load proceeding details')
       } finally {
@@ -185,12 +199,25 @@ export default function ProceedingDetail() {
             {fir ? `Writ: ${fir.firNumber} - ${fir.petitionerName}` : 'Proceeding Information'}
           </p>
         </div>
-        <button
-          onClick={handleBack}
-          className="text-sm font-medium text-indigo-600 hover:underline"
-        >
-          ← Back
-        </button>
+        <div className="flex items-center gap-3">
+          {canEdit && fir && (
+            <button
+              onClick={() => {
+                const firId = typeof proceeding.fir === 'object' ? proceeding.fir._id : proceeding.fir
+                navigate(`/firs/${firId}?editProceeding=${proceedingId}`)
+              }}
+              className="rounded-md border border-gray-600 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
+            >
+              Edit Proceeding
+            </button>
+          )}
+          <button
+            onClick={handleBack}
+            className="text-sm font-medium text-indigo-600 hover:underline"
+          >
+            ← Back
+          </button>
+        </div>
       </div>
 
       {/* Basic Information */}

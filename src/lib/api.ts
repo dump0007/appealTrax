@@ -359,3 +359,130 @@ export async function createProceeding(
   return data as Proceeding
 }
 
+export async function updateProceeding(
+  proceedingId: string,
+  payload: CreateProceedingInput,
+  file?: File,
+  attachmentFiles?: {
+    noticeOfMotion?: Map<number, File>
+    replyTracking?: Map<number, File>
+    argumentDetails?: Map<number, File>
+    anyOtherDetails?: Map<number, File>
+    decisionDetails?: File
+  },
+  filesToDelete?: string[]
+) {
+  const token = getAuthToken()
+  if (!token) {
+    throw new Error('Authentication required')
+  }
+
+  // Create FormData
+  const formData = new FormData()
+  
+  // Add all payload fields to FormData
+  formData.append('fir', payload.fir)
+  formData.append('type', payload.type)
+  if (payload.summary) formData.append('summary', payload.summary)
+  if (payload.details) formData.append('details', payload.details)
+  formData.append('hearingDetails', JSON.stringify(payload.hearingDetails))
+  
+  if (payload.noticeOfMotion) {
+    formData.append('noticeOfMotion', JSON.stringify(payload.noticeOfMotion))
+  }
+  if (payload.replyTracking) {
+    formData.append('replyTracking', JSON.stringify(payload.replyTracking))
+  }
+  if (payload.argumentDetails) {
+    formData.append('argumentDetails', JSON.stringify(payload.argumentDetails))
+  }
+  if (payload.anyOtherDetails) {
+    formData.append('anyOtherDetails', JSON.stringify(payload.anyOtherDetails))
+  }
+  if (payload.decisionDetails) {
+    formData.append('decisionDetails', JSON.stringify(payload.decisionDetails))
+  }
+  if (payload.draft !== undefined) {
+    formData.append('draft', String(payload.draft))
+  }
+
+  // Add filesToDelete if provided
+  if (filesToDelete && filesToDelete.length > 0) {
+    formData.append('filesToDelete', JSON.stringify(filesToDelete))
+  }
+  
+  // Add orderOfProceeding file if present (legacy support)
+  if (file) {
+    formData.append('orderOfProceeding', file)
+  }
+
+  // Add attachment files for all proceeding types
+  if (attachmentFiles) {
+    // Notice of Motion attachments
+    if (attachmentFiles.noticeOfMotion) {
+      attachmentFiles.noticeOfMotion.forEach((file, index) => {
+        formData.append(`attachments_noticeOfMotion_${index}`, file)
+      })
+    }
+
+    // To File Reply attachments
+    if (attachmentFiles.replyTracking) {
+      attachmentFiles.replyTracking.forEach((file, index) => {
+        formData.append(`attachments_replyTracking_${index}`, file)
+      })
+    }
+
+    // Argument attachments
+    if (attachmentFiles.argumentDetails) {
+      attachmentFiles.argumentDetails.forEach((file, index) => {
+        formData.append(`attachments_argumentDetails_${index}`, file)
+      })
+    }
+
+    // Any Other attachments
+    if (attachmentFiles.anyOtherDetails) {
+      attachmentFiles.anyOtherDetails.forEach((file, index) => {
+        formData.append(`attachments_anyOtherDetails_${index}`, file)
+      })
+    }
+
+    // Decision Details attachment
+    if (attachmentFiles.decisionDetails) {
+      formData.append('attachments_decisionDetails', attachmentFiles.decisionDetails)
+    }
+  }
+
+  const response = await fetch(`${API_BASE_URL}/v1/proceedings/${proceedingId}`, {
+    method: 'PUT',
+    headers: {
+      'x-access-token': token,
+      // Don't set Content-Type - browser will set it with boundary for FormData
+    },
+    body: formData,
+  })
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}))
+    const message = errorData.message || `Request failed with status ${response.status}`
+    
+    // Handle auth errors
+    if (response.status === 401 || response.status === 403) {
+      handleAuthError()
+      throw new Error('Authentication required. Please login again.')
+    }
+    
+    throw new Error(message)
+  }
+
+  const data = await response.json()
+  
+  // Invalidate proceedings cache since we updated one
+  const cache = useApiCacheStore.getState()
+  cache.invalidateProceedings() // Clear all proceedings cache
+  if (payload.fir) {
+    cache.invalidateFIR(payload.fir) // Invalidate this FIR's proceedings
+  }
+  
+  return data as Proceeding
+}
+
