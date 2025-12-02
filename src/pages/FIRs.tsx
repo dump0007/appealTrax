@@ -91,6 +91,7 @@ export default function FIRs() {
   const [hasArgumentProceeding, setHasArgumentProceeding] = useState(false)
   const [showConfirmModal, setShowConfirmModal] = useState(false)
   const [isUpdating, setIsUpdating] = useState(false)
+  const [isCreating, setIsCreating] = useState(false)
   const [proceedingFormData, setProceedingFormData] = useState({
     type: 'NOTICE_OF_MOTION' as ProceedingType,
     summary: '',
@@ -1140,6 +1141,7 @@ export default function FIRs() {
         return
       }
 
+      // For Step 1, create/update FIR directly (no confirmation modal)
       let updatedFIR: FIR
       if (createdFIRId) {
         // Update existing FIR (for resume incomplete case)
@@ -1258,6 +1260,7 @@ export default function FIRs() {
     }
   }
 
+
   async function handleSaveDraft() {
     console.log('[FIRs] handleSaveDraft called - Saving as draft')
     if (!createdFIRId) {
@@ -1366,8 +1369,20 @@ export default function FIRs() {
       return
     }
 
+    // Show confirmation modal for Step 2 (proceeding submission)
+    setShowConfirmModal(true)
+    setFormSubmitting(false)
+  }
+
+  async function confirmProceedingSubmit() {
+    if (!createdFIRId) {
+      setFormError('FIR ID is missing. Please go back and try again.')
+      setShowConfirmModal(false)
+      return
+    }
+
     try {
-      setFormSubmitting(true)
+      setIsCreating(true)
       setFormError(null)
 
       // Validate file if present
@@ -3516,25 +3531,47 @@ export default function FIRs() {
       </section>
       )}
 
-      {/* Confirmation Modal for Writ Update */}
+      {/* Confirmation Modal for Writ Create/Update */}
       {showConfirmModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900 bg-opacity-20">
           <div className="rounded-lg bg-white p-6 shadow-xl max-w-2xl w-full mx-4">
-            {isUpdating ? (
+            {isUpdating || isCreating ? (
               <div className="flex flex-col items-center justify-center py-8">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mb-4"></div>
-                <p className="text-sm font-medium text-gray-700">Updating writ...</p>
+                <p className="text-sm font-medium text-gray-700">
+                  {isUpdating ? 'Updating writ...' : (currentStep === 2 ? 'Filing writ...' : 'Creating writ...')}
+                </p>
                 <p className="text-xs text-gray-500 mt-2">Please wait while we save your changes</p>
               </div>
             ) : (
               <>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Confirm Update</h3>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                  {isEditMode ? 'Confirm Update' : (currentStep === 2 ? 'Confirm & File Writ' : 'Confirm Create')}
+                </h3>
                 <div className="space-y-3 mb-6">
                   <p className="text-sm text-gray-700">
-                    Are you sure you want to update this writ? This action will:
+                    {isEditMode 
+                      ? 'Are you sure you want to update this writ? This action will:'
+                      : currentStep === 2
+                      ? 'Are you sure you want to file this writ? This action will:'
+                      : 'Are you sure you want to create this writ? This action will:'
+                    }
                   </p>
                   <ul className="list-disc list-inside text-sm text-gray-600 space-y-1 ml-4">
-                    <li>Update all writ details</li>
+                    {isEditMode ? (
+                      <li>Update all writ details</li>
+                    ) : currentStep === 2 ? (
+                      <>
+                        <li>Create the proceeding with all provided details</li>
+                        <li>File the writ as complete</li>
+                        <li>Close the form and return to the writ list</li>
+                      </>
+                    ) : (
+                      <>
+                        <li>Create a new writ with the provided details</li>
+                        <li>Proceed to add proceeding details</li>
+                      </>
+                    )}
                   </ul>
                 </div>
                 <div className="flex items-center justify-end gap-3">
@@ -3550,10 +3587,10 @@ export default function FIRs() {
                   </button>
                   <button
                     type="button"
-                    onClick={confirmWritUpdate}
+                    onClick={isEditMode ? confirmWritUpdate : confirmProceedingSubmit}
                     className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
                   >
-                    Confirm Update
+                    {isEditMode ? 'Confirm Update' : 'Confirm & File Writ'}
                   </button>
                 </div>
               </>
