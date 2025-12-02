@@ -89,6 +89,8 @@ export default function FIRs() {
   const [isEditMode, setIsEditMode] = useState(false)
   const [loadingEditData, setLoadingEditData] = useState(false)
   const [hasArgumentProceeding, setHasArgumentProceeding] = useState(false)
+  const [showConfirmModal, setShowConfirmModal] = useState(false)
+  const [isUpdating, setIsUpdating] = useState(false)
   const [proceedingFormData, setProceedingFormData] = useState({
     type: 'NOTICE_OF_MOTION' as ProceedingType,
     summary: '',
@@ -1131,9 +1133,16 @@ export default function FIRs() {
         // description: '', // Commented out - using petitionerPrayer instead
       }
 
+      // If editing completed writ, show confirmation modal
+      if (isEditMode && createdFIRId) {
+        setShowConfirmModal(true)
+        setFormSubmitting(false)
+        return
+      }
+
       let updatedFIR: FIR
       if (createdFIRId) {
-        // Update existing FIR
+        // Update existing FIR (for resume incomplete case)
         updatedFIR = await updateFIR(createdFIRId, payload)
       } else {
         // Create new FIR
@@ -1144,19 +1153,6 @@ export default function FIRs() {
       // Cache is invalidated by createFIR/updateFIR, so fetch fresh list
       const freshData = await fetchFIRs()
       setFirs(freshData)
-      
-      // If editing completed writ, close form after update
-      if (isEditMode && updatedFIR && updatedFIR._id) {
-        setFormData(createInitialForm())
-        setCreatedFIRId(null)
-        setIsEditMode(false)
-        setHasArgumentProceeding(false)
-        setIsResumingIncomplete(false)
-        setCurrentStep(1)
-        setFormOpen(false)
-        setFormError(null)
-        return
-      }
       
       // Move to Step 2 with the FIR ID (only for new FIRs)
       if (updatedFIR && updatedFIR._id) {
@@ -1180,6 +1176,85 @@ export default function FIRs() {
       setFormError(err instanceof Error ? err.message : 'Failed to create FIR')
     } finally {
       setFormSubmitting(false)
+    }
+  }
+
+  async function confirmWritUpdate() {
+    if (!createdFIRId) {
+      setFormError('FIR ID is missing. Please try again.')
+      setShowConfirmModal(false)
+      return
+    }
+
+    try {
+      setIsUpdating(true)
+      setFormError(null)
+
+      const respondents = formData.respondents
+        .map((r) => ({
+          name: r.name.trim(),
+          designation: r.designation ? r.designation.trim() : '',
+        }))
+        .filter((r) => r.name)
+
+      if (respondents.length === 0) {
+        setFormError('Please provide at least one respondent with name.')
+        setIsUpdating(false)
+        return
+      }
+
+      const investigatingOfficers = formData.investigatingOfficers
+        .map((io) => ({
+          name: io.name.trim(),
+          rank: io.rank.trim(),
+          posting: io.posting.trim(),
+          contact: io.contact || 0,
+          from: io.from && io.from.trim() ? io.from.trim() : null,
+          to: io.to && io.to.trim() ? io.to.trim() : null,
+        }))
+        .filter((io) => io.name && io.rank && io.posting)
+
+      if (investigatingOfficers.length === 0) {
+        setFormError('Please provide at least one investigating officer with name, rank, and posting.')
+        setIsUpdating(false)
+        return
+      }
+
+      const payload: CreateFIRInput = {
+        ...formData,
+        sections: formData.sections && formData.sections.length ? formData.sections : [formData.underSection],
+        respondents,
+        investigatingOfficers,
+        linkedWrits: formData.linkedWrits?.filter((id) => id),
+        writSubType: formData.writType === 'BAIL' ? formData.writSubType : null,
+        writTypeOther: formData.writType === 'ANY_OTHER' ? formData.writTypeOther : undefined,
+        investigatingOfficerContact: Number(formData.investigatingOfficerContact) || 0,
+        investigatingOfficerFrom: formData.investigatingOfficerFrom || undefined,
+        investigatingOfficerTo: formData.investigatingOfficerTo || undefined,
+      }
+
+      const updatedFIR = await updateFIR(createdFIRId, payload)
+      
+      // Cache is invalidated by updateFIR, so fetch fresh list
+      const freshData = await fetchFIRs()
+      setFirs(freshData)
+      
+      // Close form after update
+      if (updatedFIR && updatedFIR._id) {
+        setFormData(createInitialForm())
+        setCreatedFIRId(null)
+        setIsEditMode(false)
+        setHasArgumentProceeding(false)
+        setIsResumingIncomplete(false)
+        setCurrentStep(1)
+        setFormOpen(false)
+        setFormError(null)
+        setShowConfirmModal(false)
+        setIsUpdating(false)
+      }
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Failed to update writ')
+      setIsUpdating(false)
     }
   }
 
@@ -3439,6 +3514,52 @@ export default function FIRs() {
           </div>
         )}
       </section>
+      )}
+
+      {/* Confirmation Modal for Writ Update */}
+      {showConfirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900 bg-opacity-20">
+          <div className="rounded-lg bg-white p-6 shadow-xl max-w-2xl w-full mx-4">
+            {isUpdating ? (
+              <div className="flex flex-col items-center justify-center py-8">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mb-4"></div>
+                <p className="text-sm font-medium text-gray-700">Updating writ...</p>
+                <p className="text-xs text-gray-500 mt-2">Please wait while we save your changes</p>
+              </div>
+            ) : (
+              <>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Confirm Update</h3>
+                <div className="space-y-3 mb-6">
+                  <p className="text-sm text-gray-700">
+                    Are you sure you want to update this writ? This action will:
+                  </p>
+                  <ul className="list-disc list-inside text-sm text-gray-600 space-y-1 ml-4">
+                    <li>Update all writ details</li>
+                  </ul>
+                </div>
+                <div className="flex items-center justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowConfirmModal(false)
+                      setFormSubmitting(false)
+                    }}
+                    className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={confirmWritUpdate}
+                    className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+                  >
+                    Confirm Update
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       )}
     </div>
   )
