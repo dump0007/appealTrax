@@ -28,7 +28,7 @@ const WRIT_TYPE_OPTIONS: { label: string; value: WritType }[] = [
   { label: 'Quashing', value: 'QUASHING' },
   { label: 'Direction', value: 'DIRECTION' },
   { label: 'Suspension of Sentence', value: 'SUSPENSION_OF_SENTENCE' },
-  { label: 'Payroll', value: 'PAYROLL' },
+  { label: 'Parole', value: 'PAROLE' },
   { label: 'Any Other', value: 'ANY_OTHER' },
 ]
 

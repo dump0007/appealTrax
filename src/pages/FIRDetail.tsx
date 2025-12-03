@@ -2118,7 +2118,7 @@ function formatWritType(type?: FIR['writType']) {
     QUASHING: 'Quashing',
     DIRECTION: 'Direction',
     SUSPENSION_OF_SENTENCE: 'Suspension of Sentence',
-    PAYROLL: 'Payroll',
+    PAROLE: 'Parole',
     ANY_OTHER: 'Other',
   }
   return map[type] || formatStatusLabel(type)

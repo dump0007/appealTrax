@@ -40,7 +40,7 @@ export type WritType =
   | 'QUASHING'
   | 'DIRECTION'
   | 'SUSPENSION_OF_SENTENCE'
-  | 'PAYROLL'
+  | 'PAROLE'
   | 'ANY_OTHER'
 
 export type BailSubType = 'ANTICIPATORY' | 'REGULAR'
