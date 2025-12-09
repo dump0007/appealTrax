@@ -2,6 +2,9 @@ import type {
   FIR,
   FIRCityBreakdown,
   FIRDashboardMetrics,
+  MotionDashboardMetrics,
+  AffidavitDashboardMetrics,
+  WritTypeDistribution,
   CreateFIRInput,
   Proceeding,
   CreateProceedingInput,
@@ -178,6 +181,21 @@ export async function fetchFIRCityGraph() {
   const data = await request<FIRCityBreakdown[]>('/v1/firs/graph')
   // Save to cache
   useApiCacheStore.getState().setCityGraph(data)
+  return data
+}
+
+export async function fetchMotionDashboard() {
+  const data = await request<MotionDashboardMetrics>('/v1/proceedings/motion-metrics')
+  return data
+}
+
+export async function fetchAffidavitDashboard() {
+  const data = await request<AffidavitDashboardMetrics>('/v1/proceedings/affidavit-metrics')
+  return data
+}
+
+export async function fetchWritTypeDistribution() {
+  const data = await request<WritTypeDistribution[]>('/v1/firs/writ-type-distribution')
   return data
 }
 

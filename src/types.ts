@@ -108,6 +108,23 @@ export interface FIRDashboardMetrics {
   statusCounts: FIRStatusCount[]
 }
 
+export interface MotionDashboardMetrics {
+  filed: number
+  pending: number
+  overdue: number
+}
+
+export interface AffidavitDashboardMetrics {
+  filed: number
+  pending: number
+  overdue: number
+}
+
+export interface WritTypeDistribution {
+  type: WritType
+  count: number
+}
+
 export interface FIRCityBreakdown {
   branch: string
   count: number
