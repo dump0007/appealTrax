@@ -1,6 +1,10 @@
+export type UserRole = 'USER' | 'ADMIN'
+
 export interface AuthUser {
   email: string
   token: string
+  role?: UserRole
+  branch?: string
 }
 
 export type HearingStatus = 'scheduled' | 'completed' | 'adjourned' | 'cancelled'

@@ -23,6 +23,8 @@ interface AuthResponse {
   status: number
   logged: boolean
   token?: string
+  role?: string
+  branch?: string
   message?: string
 }
 
@@ -196,6 +198,11 @@ export async function fetchAffidavitDashboard() {
 
 export async function fetchWritTypeDistribution() {
   const data = await request<WritTypeDistribution[]>('/v1/firs/writ-type-distribution')
+  return data
+}
+
+export async function fetchBranches() {
+  const data = await request<string[]>('/v1/branches')
   return data
 }
 

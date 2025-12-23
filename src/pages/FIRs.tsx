@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { createFIR, createProceeding, fetchDraftProceedingByFIR, fetchFIRDetail, fetchFIRs, fetchProceedingsByFIR, updateFIR } from '../lib/api'
-import { useApiCacheStore } from '../store'
+import { useApiCacheStore, useAuthStore } from '../store'
 import type { BailSubType, CreateFIRInput, CreateProceedingInput, FIR, FIRStatus, InvestigatingOfficerDetail, RespondentDetail, WritType, ProceedingType, CourtAttendanceMode, NoticeOfMotionDetails, AnyOtherDetails, PersonDetails, ArgumentDetails, WritStatus, ReplyTrackingDetails } from '../types'
 
 // Status is now managed via WritStatus from DecisionDetails in proceedings
@@ -69,6 +69,7 @@ const createInitialForm = (): CreateFIRInput => ({
 
 export default function FIRs() {
   const navigate = useNavigate()
+  const user = useAuthStore((s) => s.currentUser)
   const [searchParams, setSearchParams] = useSearchParams()
   const [firs, setFirs] = useState<FIR[]>([])
   const [loading, setLoading] = useState(true)
@@ -337,6 +338,16 @@ export default function FIRs() {
       }))
     }
   }, [formData.writType, proceedingFormData.type])
+
+  // Auto-fill branch when form opens for new FIR
+  useEffect(() => {
+    if (formOpen && !isEditMode && user?.branch) {
+      setFormData((prev) => ({
+        ...prev,
+        branchName: user.branch || '',
+      }))
+    }
+  }, [formOpen, isEditMode, user?.branch])
 
   useEffect(() => {
     async function load() {
@@ -1917,14 +1928,20 @@ export default function FIRs() {
               <form className="mt-4 space-y-6" onSubmit={handleSubmit}>
             <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
               <h3 className="text-base font-semibold text-gray-900">Section 1 · Name of Branch</h3>
-              <p className="text-sm text-gray-500">Enter the name of the branch processing this writ application.</p>
+              <p className="text-sm text-gray-500">Your branch is automatically selected based on your profile.</p>
               <div className="mt-4 grid gap-4 md:grid-cols-2">
-                <TextField
-                  label="Name of Branch"
-                  value={formData.branchName}
-                  onChange={(value) => handleInputChange('branchName', value)}
-                  required
-                />
+                <label className="text-sm font-medium text-gray-700">
+                  Name of Branch
+                  <span className="text-red-500 ml-1">*</span>
+                  <input
+                    type="text"
+                    className="mt-1 w-full rounded-md border border-gray-300 bg-gray-100 px-3 py-2"
+                    value={formData.branchName}
+                    readOnly
+                    disabled
+                    required
+                  />
+                </label>
               </div>
             </div>
 

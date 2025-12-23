@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom'
 // import { Link } from 'react-router-dom' // Commented out - signup link removed
 import { loginUser } from '../lib/api'
 import { useAuthStore } from '../store'
+import type { UserRole } from '../types'
 
 export default function Login() {
   const navigate = useNavigate()
@@ -26,7 +27,21 @@ export default function Login() {
     setLoading(true)
     try {
       const result = await loginUser(form)
-      setAuth({ email: form.email, token: result.token! })
+      const role = (result.role as UserRole) || 'USER'
+      
+      // Only allow USER role to login to user panel
+      if (role === 'ADMIN') {
+        setError('Administrators must use the admin panel to access their account.')
+        setLoading(false)
+        return
+      }
+      
+      setAuth({ 
+        email: form.email, 
+        token: result.token!,
+        role,
+        branch: result.branch || ''
+      })
       navigate('/')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to login')

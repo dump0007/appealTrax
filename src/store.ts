@@ -11,6 +11,7 @@ interface AuthState {
   currentUser: AuthUser | null
   setAuth: (user: AuthUser) => void
   logout: () => void
+  isAdmin: () => boolean
 }
 
 interface AppealsState {
@@ -62,13 +63,17 @@ const CACHE_TTL = 5 * 60 * 1000 // 5 minutes in milliseconds
 
 export const useAuthStore = create<AuthState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       currentUser: null,
       setAuth: (user) => set({ currentUser: user }),
       logout: () => {
         set({ currentUser: null })
         // Clear API cache on logout
         useApiCacheStore.getState().clearCache()
+      },
+      isAdmin: () => {
+        const user = get().currentUser
+        return user?.role === 'ADMIN'
       },
     }),
     { name: 'writtrax-auth' }
