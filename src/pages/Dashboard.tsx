@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { fetchAffidavitDashboard, fetchFIRCityGraph, fetchFIRDashboard, fetchFIRs, fetchMotionDashboard, fetchProceedingsByFIR, fetchWritTypeDistribution } from '../lib/api'
 import { useAuthStore, useApiCacheStore } from '../store'
@@ -291,75 +291,97 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Top tile area (3 rows x 2) + Affidavit bar graph */}
+      {/* Top tile area with Total Writs + 6 compact tiles + Affidavit bar graph */}
       <div className="grid gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2 grid gap-4 sm:grid-cols-2">
-        <MetricCard 
-          label="Filed Affidavit" 
-          value={totalCases} 
-          loading={loading}
-          icon={
-            <svg className="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-          }
-          borderColor="indigo"
-        />
-        <MetricCard 
-          label="Pending Affidavit" 
-          value={pendingCases} 
-          loading={loading}
-          icon={
-            <svg className="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-          }
-          borderColor="indigo"
-        />
-        <MetricCard 
-          label="Overdue Affidavit" 
-          value={affidavitMetrics?.overdue ?? 0} 
-          loading={loading}
-          icon={
-            <svg className="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-          }
-          borderColor="indigo"
-        />
-        <MetricCard 
-          label="Filed Motion" 
-          value={motionMetrics?.filed ?? 0} 
-          loading={loading}
-          icon={
-            <svg className="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3" />
-            </svg>
-          }
-          borderColor="teal"
-        />
-        <MetricCard 
-          label="Pending Motion" 
-          value={motionMetrics?.pending ?? 0} 
-          loading={loading}
-          icon={
-            <svg className="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3" />
-            </svg>
-          }
-          borderColor="teal"
-        />
-        <MetricCard 
-          label="Overdue Motion" 
-          value={motionMetrics?.overdue ?? 0} 
-          loading={loading}
-          icon={
-            <svg className="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3" />
-            </svg>
-          }
-          borderColor="teal"
-        />
+        <div className="lg:col-span-2 grid gap-4">
+          {/* Total Writs Tile - Full Width */}
+          <MetricCard 
+            label="Total Number of Writs" 
+            value={statusTotals} 
+            loading={loading}
+            icon={
+              <svg className="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            }
+            borderColor="purple"
+          />
+          
+          {/* Compact Tiles Grid - 2 columns */}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <MetricCard 
+              label="Filed Affidavit" 
+              value={totalCases} 
+              loading={loading}
+              compact={true}
+              icon={
+                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              }
+              borderColor="indigo"
+            />
+            <MetricCard 
+              label="Pending Affidavit" 
+              value={pendingCases} 
+              loading={loading}
+              compact={true}
+              icon={
+                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              }
+              borderColor="indigo"
+            />
+            <MetricCard 
+              label="Overdue Affidavit" 
+              value={affidavitMetrics?.overdue ?? 0} 
+              loading={loading}
+              compact={true}
+              icon={
+                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              }
+              borderColor="indigo"
+            />
+            <MetricCard 
+              label="Filed Motion" 
+              value={motionMetrics?.filed ?? 0} 
+              loading={loading}
+              compact={true}
+              icon={
+                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3" />
+                </svg>
+              }
+              borderColor="teal"
+            />
+            <MetricCard 
+              label="Pending Motion" 
+              value={motionMetrics?.pending ?? 0} 
+              loading={loading}
+              compact={true}
+              icon={
+                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3" />
+                </svg>
+              }
+              borderColor="teal"
+            />
+            <MetricCard 
+              label="Overdue Motion" 
+              value={motionMetrics?.overdue ?? 0} 
+              loading={loading}
+              compact={true}
+              icon={
+                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3" />
+                </svg>
+              }
+              borderColor="teal"
+            />
+          </div>
         </div>
         <div className="card-soft p-6">
           <h2 className="mb-1 text-lg font-semibold text-gray-900">Affidavit Status Graph</h2>
@@ -1038,6 +1060,7 @@ function MetricCard({
   icon,
   borderColor = 'indigo',
   bgTint,
+  compact = false,
 }: {
   label: string
   value: number
@@ -1045,6 +1068,7 @@ function MetricCard({
   icon?: React.ReactNode
   borderColor?: 'indigo' | 'teal' | 'purple'
   bgTint?: string
+  compact?: boolean
 }) {
   const borderColorMap = {
     indigo: 'border-l-indigo-600',
@@ -1058,22 +1082,40 @@ function MetricCard({
     purple: 'text-purple-600',
   }
 
+  const padding = compact ? 'p-3' : 'p-4'
+  const iconSize = compact ? 'h-6 w-6' : 'h-8 w-8'
+  const valueSize = compact ? 'text-2xl' : 'text-3xl'
+
+  // Clone icon with appropriate size if it's an SVG element, preserving existing classes
+  const sizedIcon = icon && React.isValidElement(icon) 
+    ? (() => {
+        const existingClassName = (icon as React.ReactElement<any>).props?.className || ''
+        // Replace existing size classes and add the correct size
+        const mergedClassName = existingClassName
+          .replace(/\b(h-\d+|w-\d+)\b/g, '') // Remove existing h-* and w-* classes
+          .trim()
+        return React.cloneElement(icon as React.ReactElement<any>, {
+          className: `${mergedClassName} ${iconSize}`.trim()
+        })
+      })()
+    : icon
+
   return (
     <div 
-      className={`rounded-xl border-l-4 border bg-white p-4 shadow-sm ${borderColorMap[borderColor]}`}
+      className={`rounded-xl border-l-4 border bg-white ${padding} shadow-sm ${borderColorMap[borderColor]}`}
       style={bgTint ? { backgroundColor: bgTint } : undefined}
     >
       <div className="flex items-center justify-between">
         <div className="text-xs font-medium uppercase tracking-wide text-gray-500">
           {label}
         </div>
-        {icon && (
+        {sizedIcon && (
           <div className="text-gray-400">
-            {icon}
+            {sizedIcon}
           </div>
         )}
       </div>
-      <div className={`mt-2 text-3xl font-semibold ${textColorMap[borderColor]}`}>
+      <div className={`mt-2 ${valueSize} font-semibold ${textColorMap[borderColor]}`}>
         {loading ? '—' : value}
       </div>
     </div>
