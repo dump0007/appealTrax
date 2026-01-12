@@ -65,7 +65,12 @@ export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
       currentUser: null,
-      setAuth: (user) => set({ currentUser: user }),
+      setAuth: (user) => set({ 
+        currentUser: { 
+          ...user, 
+          email: user.email?.toLowerCase().trim() || user.email 
+        } 
+      }),
       logout: () => {
         set({ currentUser: null })
         // Clear API cache on logout

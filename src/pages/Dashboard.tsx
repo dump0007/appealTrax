@@ -13,13 +13,24 @@ type ProceedingEvent = {
 }
 
 function formatDateKey(d: Date) {
-  return d.toISOString().split('T')[0]
+  // Use local date components to avoid timezone shifts
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 function parseDateSafe(value?: string | Date): Date | null {
   if (!value) return null
-  const d = value instanceof Date ? value : new Date(value)
-  return Number.isNaN(d.getTime()) ? null : d
+  if (value instanceof Date) {
+    // Create a new date using local components to avoid timezone issues
+    return new Date(value.getFullYear(), value.getMonth(), value.getDate())
+  }
+  // If it's a string, parse it and use local date components
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return null
+  // Return date with local components (no time, no timezone shift)
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate())
 }
 
 function isSameDay(a: Date, b: Date) {
@@ -114,7 +125,12 @@ export default function Dashboard() {
   }, [user?.email])
 
   useEffect(() => {
-    if (firs.length === 0) return
+    if (firs.length === 0) {
+      // No FIRs – clear events and ensure loading state is reset
+      setEventsLoading(false)
+      setProceedingEvents([])
+      return
+    }
     let active = true
 
     async function loadEvents() {
@@ -146,8 +162,15 @@ export default function Dashboard() {
         if (!active) return
         allEvents.sort((a, b) => a.date.getTime() - b.date.getTime())
         setProceedingEvents(allEvents)
+      } catch (err) {
+        console.error('Failed to load proceedings events:', err)
+        if (active) {
+          setProceedingEvents([])
+        }
       } finally {
-        if (active) setEventsLoading(false)
+        if (active) {
+          setEventsLoading(false)
+        }
       }
     }
 
@@ -594,7 +617,7 @@ export default function Dashboard() {
                     <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-gray-700">
                       {ev.type.replace(/_/g, ' ')}
                     </span>
-                    <span>{ev.date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    <span>All day</span>
                   </div>
                 </div>
               </div>

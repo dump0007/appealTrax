@@ -29,8 +29,11 @@ export default function Signup() {
 
     setLoading(true)
     try {
+      // Normalize email to lowercase - password remains case-sensitive
+      // @ts-expect-error - Variable prepared for when signup is re-enabled
+      const normalizedEmail = form.email.toLowerCase().trim()
       // Signup functionality disabled - commented out
-      // await signupUser({ email: form.email, password: form.password })
+      // await signupUser({ email: normalizedEmail, password: form.password })
       // Ensure store is cleared before redirecting
       // logout()
       // navigate('/login?signup=1')

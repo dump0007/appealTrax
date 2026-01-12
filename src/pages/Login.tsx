@@ -26,7 +26,9 @@ export default function Login() {
     setError(null)
     setLoading(true)
     try {
-      const result = await loginUser(form)
+      // Normalize email to lowercase - password remains case-sensitive
+      const normalizedEmail = form.email.toLowerCase().trim()
+      const result = await loginUser({ ...form, email: normalizedEmail })
       const role = (result.role as UserRole) || 'USER'
       
       // Only allow USER role to login to user panel
@@ -37,7 +39,7 @@ export default function Login() {
       }
       
       setAuth({ 
-        email: form.email, 
+        email: normalizedEmail, 
         token: result.token!,
         role,
         branch: result.branch || ''
