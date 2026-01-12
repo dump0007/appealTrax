@@ -10,6 +10,7 @@ type ProceedingEvent = {
   title: string
   type: string
   firNumber?: string
+  proceedingId?: string
 }
 
 function formatDateKey(d: Date) {
@@ -152,6 +153,7 @@ export default function Dashboard() {
                   title,
                   type: p.type,
                   firNumber: (p.fir && typeof p.fir === 'object' && 'firNumber' in p.fir) ? (p.fir as any).firNumber : fir.firNumber,
+                  proceedingId: p._id,
                 })
               })
             } catch (err) {
@@ -576,7 +578,11 @@ export default function Dashboard() {
               <div className="text-sm text-gray-500">No proceedings scheduled for today.</div>
             )}
             {!eventsLoading && todayEvents.map((ev, idx) => (
-              <div key={idx} className="rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-sm">
+              <div
+                key={idx}
+                onClick={() => ev.proceedingId && navigate(`/proceedings/${ev.proceedingId}`)}
+                className={`rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-sm ${ev.proceedingId ? 'cursor-pointer hover:bg-gray-50 hover:border-gray-300 transition-colors' : ''}`}
+              >
                 <div className="flex items-center justify-between text-sm text-gray-900">
                   <span className="font-semibold">{ev.title}</span>
                   <span className="text-xs text-gray-500">{ev.firNumber || '—'}</span>
@@ -603,7 +609,11 @@ export default function Dashboard() {
               <div className="text-sm text-gray-500">No upcoming proceedings in the next 4 weeks.</div>
             )}
             {!eventsLoading && upcomingEvents.map((ev, idx) => (
-              <div key={idx} className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-sm">
+              <div
+                key={idx}
+                onClick={() => ev.proceedingId && navigate(`/proceedings/${ev.proceedingId}`)}
+                className={`flex items-center gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-sm ${ev.proceedingId ? 'cursor-pointer hover:bg-gray-50 hover:border-gray-300 transition-colors' : ''}`}
+              >
                 <div className="flex h-10 w-14 flex-col items-center justify-center rounded-md bg-indigo-50 text-indigo-700 text-xs font-semibold border border-indigo-100">
                   <span>{ev.date.toLocaleString('en', { month: 'short' })}</span>
                   <span className="text-base">{ev.date.getDate()}</span>
