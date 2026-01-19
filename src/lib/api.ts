@@ -10,6 +10,7 @@ import type {
   CreateProceedingInput,
 } from '../types'
 import { useAuthStore, useApiCacheStore } from '../store'
+import { ApiError } from './errors'
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') || 'http://localhost:3000'
@@ -67,7 +68,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     // If no token for protected route, redirect immediately
     console.warn('[API] No token available for protected route:', path)
     handleAuthError()
-    throw new Error('Authentication required. Please login again.')
+    throw new ApiError('Authentication required. Please login again.', { status: 401 })
   }
 
   const method = options.method || 'GET'
@@ -93,7 +94,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     if (!isAuthEndpoint && (response.status === 401 || response.status === 403)) {
       handleAuthError()
     }
-    throw new Error('Unable to parse server response')
+    throw new ApiError('Unable to parse server response', { status: response.status })
   }
 
   // Handle authentication errors (401 Unauthorized, 403 Forbidden)
@@ -106,14 +107,14 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
       response.status === 401 
         ? 'Your session has expired. Please login again.' 
         : 'Access forbidden. Please login again.'
-    throw new Error(message)
+    throw new ApiError(message, { status: response.status, data })
   }
 
   if (!response.ok) {
     const message =
       (data as MaybeStatusResponse)?.message || `Request failed with status ${response.status}`
     console.error('[API] Request failed:', message)
-    throw new Error(message)
+    throw new ApiError(message, { status: response.status, data })
   }
 
   // Check for status field only if it's an object (not an array)
@@ -130,7 +131,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
         (data as MaybeStatusResponse).message ||
         `Request failed with status ${maybeStatus}`
       console.error('[API] Status error:', message)
-      throw new Error(message)
+      throw new ApiError(message, { status: maybeStatus, data })
     }
   }
 
@@ -277,7 +278,7 @@ export async function createProceeding(
 ) {
   const token = getAuthToken()
   if (!token) {
-    throw new Error('Authentication required')
+    throw new ApiError('Authentication required', { status: 401 })
   }
 
   // Create FormData
@@ -366,10 +367,10 @@ export async function createProceeding(
     // Handle auth errors
     if (response.status === 401 || response.status === 403) {
       handleAuthError()
-      throw new Error('Authentication required. Please login again.')
+      throw new ApiError('Authentication required. Please login again.', { status: response.status, data: errorData })
     }
     
-    throw new Error(message)
+    throw new ApiError(message, { status: response.status, data: errorData })
   }
 
   const data = await response.json()
@@ -399,7 +400,7 @@ export async function updateProceeding(
 ) {
   const token = getAuthToken()
   if (!token) {
-    throw new Error('Authentication required')
+    throw new ApiError('Authentication required', { status: 401 })
   }
 
   // Create FormData
@@ -493,10 +494,10 @@ export async function updateProceeding(
     // Handle auth errors
     if (response.status === 401 || response.status === 403) {
       handleAuthError()
-      throw new Error('Authentication required. Please login again.')
+      throw new ApiError('Authentication required. Please login again.', { status: response.status, data: errorData })
     }
     
-    throw new Error(message)
+    throw new ApiError(message, { status: response.status, data: errorData })
   }
 
   const data = await response.json()

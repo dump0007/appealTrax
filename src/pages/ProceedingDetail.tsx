@@ -3,6 +3,7 @@ import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { fetchProceedingDetail, fetchProceedingsByFIR } from '../lib/api'
 import { useAuthStore } from '../store'
 import type { Proceeding } from '../types'
+import { toastError, toast } from '../lib/toast'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') || 'http://localhost:3000'
 
@@ -46,7 +47,7 @@ function getFileIcon(fileName: string): string {
 async function downloadFile(filename: string, displayName: string) {
   const token = useAuthStore.getState().currentUser?.token
   if (!token) {
-    alert('Authentication required to download files')
+    toast.error('Authentication required to download files')
     return
   }
 
@@ -72,7 +73,7 @@ async function downloadFile(filename: string, displayName: string) {
     document.body.removeChild(a)
   } catch (error) {
     console.error('Error downloading file:', error)
-    alert('Failed to download file. Please try again.')
+    toastError(error, 'Failed to download file. Please try again.')
   }
 }
 
@@ -120,6 +121,7 @@ export default function ProceedingDetail() {
           }
         }
       } catch (err) {
+        toastError(err, 'Failed to load proceeding details')
         setError(err instanceof Error ? err.message : 'Failed to load proceeding details')
       } finally {
         setLoading(false)

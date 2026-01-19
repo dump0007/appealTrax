@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { createProceeding, fetchFIRDetail, fetchProceedingsByFIR, fetchDraftProceedingByFIR } from '../lib/api'
 import { useAuthStore, useApiCacheStore } from '../store'
 import type { FIR, Proceeding, ProceedingType, CourtAttendanceMode, CreateProceedingInput, NoticeOfMotionDetails, AnyOtherDetails, PersonDetails, WritStatus, ReplyTrackingDetails } from '../types'
+import { toastError, toast } from '../lib/toast'
 
 // Helper function to convert NoticeOfMotionDetails to ReplyTrackingDetails for TO_FILE_REPLY
 function convertToReplyTracking(entry: NoticeOfMotionDetails): ReplyTrackingDetails {
@@ -346,6 +347,7 @@ export default function FIRDetail() {
         
         setError(null)
       } catch (err) {
+        toastError(err, 'Unable to load FIR')
         setError(err instanceof Error ? err.message : 'Unable to load FIR')
       } finally {
         setLoading(false)
@@ -572,16 +574,19 @@ export default function FIRDetail() {
     event.preventDefault()
     if (!formData.fir || !formData.hearingDetails.dateOfHearing) {
       setError('Please fill in required fields (Hearing Date)')
+      toast.error('Please fill in required fields (Hearing Date)')
       return
     }
 
     if (!user?.token) {
       setError('Authentication required')
+      toast.error('Authentication required')
       return
     }
 
     if (!firId) {
       setError('FIR ID is missing')
+      toast.error('FIR ID is missing')
       return
     }
 
@@ -593,6 +598,7 @@ export default function FIRDetail() {
         const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel']
         if (!allowedTypes.includes(orderOfProceedingFile.type)) {
           setError('Invalid file type. Only PDF, PNG, JPEG, JPG, and Excel files are allowed.')
+          toast.error('Invalid file type. Only PDF, PNG, JPEG, JPG, and Excel files are allowed.')
           return
         }
       }
@@ -723,7 +729,9 @@ export default function FIRDetail() {
           remarks: '',
         },
       }))
+      toast.success('Proceeding created')
     } catch (err) {
+      toastError(err, 'Failed to create proceeding')
       setError(err instanceof Error ? err.message : 'Failed to create proceeding')
     }
   }

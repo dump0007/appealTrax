@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 // import { useSearchParams } from 'react-router-dom' // Commented out - signup disabled, no need for signup success param
 // import { Link } from 'react-router-dom' // Commented out - signup link removed
 import { loginUser } from '../lib/api'
+import { toastError } from '../lib/toast'
 import { useAuthStore } from '../store'
 import type { UserRole } from '../types'
 
@@ -46,6 +47,7 @@ export default function Login() {
       })
       navigate('/')
     } catch (err) {
+      toastError(err, 'Unable to login')
       setError(err instanceof Error ? err.message : 'Unable to login')
     } finally {
       setLoading(false)

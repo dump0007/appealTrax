@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { fetchFIRDetail, fetchProceedingsByFIR, fetchProceedingDetail, updateProceeding } from '../lib/api'
 import { useAuthStore } from '../store'
 import type { FIR, Proceeding, ProceedingType, CourtAttendanceMode, CreateProceedingInput, NoticeOfMotionDetails, AnyOtherDetails, PersonDetails, WritStatus, ReplyTrackingDetails } from '../types'
+import { toastError, toast } from '../lib/toast'
 
 // Helper function to convert NoticeOfMotionDetails to ReplyTrackingDetails for TO_FILE_REPLY
 function convertToReplyTracking(entry: NoticeOfMotionDetails): ReplyTrackingDetails {
@@ -351,6 +352,7 @@ export default function EditProceeding() {
         
         setLoading(false)
       } catch (err) {
+        toastError(err, 'Failed to load proceeding for editing')
         setError(err instanceof Error ? err.message : 'Failed to load proceeding for editing')
         setLoading(false)
       }
@@ -681,11 +683,13 @@ export default function EditProceeding() {
     event.preventDefault()
     if (!proceedingId || !formData.fir || !formData.hearingDetails.dateOfHearing) {
       setError('Please fill in required fields (Hearing Date)')
+      toast.error('Please fill in required fields (Hearing Date)')
       return
     }
 
     if (!user?.token) {
       setError('Authentication required')
+      toast.error('Authentication required')
       return
     }
 
@@ -696,12 +700,14 @@ export default function EditProceeding() {
   async function confirmProceedingUpdate() {
     if (!proceedingId || !formData.fir || !formData.hearingDetails.dateOfHearing) {
       setError('Please fill in required fields (Hearing Date)')
+      toast.error('Please fill in required fields (Hearing Date)')
       setShowConfirmModal(false)
       return
     }
 
     if (!user?.token) {
       setError('Authentication required')
+      toast.error('Authentication required')
       setShowConfirmModal(false)
       return
     }
@@ -715,6 +721,7 @@ export default function EditProceeding() {
         const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel']
         if (!allowedTypes.includes(orderOfProceedingFile.type)) {
           setError('Invalid file type. Only PDF, PNG, JPEG, JPG, and Excel files are allowed.')
+          toast.error('Invalid file type. Only PDF, PNG, JPEG, JPG, and Excel files are allowed.')
           setShowConfirmModal(false)
           return
         }
@@ -783,8 +790,10 @@ export default function EditProceeding() {
       // Navigate back to proceeding detail page
       setIsUpdating(false)
       setShowConfirmModal(false)
+      toast.success('Proceeding updated')
       navigate(`/proceedings/${proceedingId}`)
     } catch (err) {
+      toastError(err, 'Failed to update proceeding')
       setError(err instanceof Error ? err.message : 'Failed to update proceeding')
       setIsUpdating(false)
       setShowConfirmModal(false)

@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 // import { useNavigate } from 'react-router-dom' // Commented out - signup disabled
 // import { signupUser } from '../lib/api' // Commented out - signup functionality disabled
 // import { useAuthStore } from '../store' // Commented out - signup disabled
+import { toast } from '../lib/toast'
 
 export default function Signup() {
   // const navigate = useNavigate() // Commented out - signup disabled
@@ -24,6 +25,7 @@ export default function Signup() {
 
     if (form.password !== form.confirmPassword) {
       setError('Passwords do not match')
+      toast.error('Passwords do not match')
       return
     }
 
@@ -38,6 +40,7 @@ export default function Signup() {
       // logout()
       // navigate('/login?signup=1')
       setError('Signup is currently disabled. Please contact administrator.')
+      toast.error('Signup is currently disabled. Please contact administrator.')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to create account')
     } finally {
